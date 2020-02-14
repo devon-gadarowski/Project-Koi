@@ -1337,7 +1337,7 @@ void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * v
 	for (auto& shape : shapes)
 	{
 		for (auto& index : shape.mesh.indices)
-		{
+		{	
 			Vertex vertex = {};
 
 			vertex.position = {
