@@ -26,3 +26,11 @@ ProjectKoi: ProjectKoi.cpp $(SYSTEMS)
 	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(LINUX_LDFLAGS)
 	./ProjectKoi
 	rm -f ProjectKoi
+
+build: ProjectKoi.cpp $(SYSTEMS)
+	bash compile_shaders.sh
+	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(LINUX_LDFLAGS)
+
+test:
+	./ProjectKoi
+	rm -f ProjectKoi

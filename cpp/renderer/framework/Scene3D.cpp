@@ -17,7 +17,7 @@ void Scene3D::updateUBO()
 		glm::vec3(camera.up.x, camera.up.y, camera.up.z)
 	);
 
-	glm::mat4 proj = glm::perspective(glm::radians(45.0f), renderer->extent.width / (float) renderer->extent.height, 0.1f, 10.0f);
+	glm::mat4 proj = glm::perspective(glm::radians(45.0f), renderer->extent.width / (float) renderer->extent.height, 0.1f, 50.0f);
 
 	proj[1][1] *= -1;
 
