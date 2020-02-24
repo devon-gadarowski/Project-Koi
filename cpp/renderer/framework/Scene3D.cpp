@@ -13,8 +13,8 @@ void Scene3D::updateUBO()
 {
 	glm::mat4 view = glm::lookAt(
 		glm::vec3(camera.position.x, camera.position.y, camera.position.z),
-		glm::vec3(camera.center.x, camera.center.y, camera.center.z),
-		glm::vec3(0.0f, 1.0f, 0.0f)
+		glm::vec3(camera.position.x + camera.direction.x, camera.position.y + camera.direction.y, camera.position.z + camera.direction.z),
+		glm::vec3(camera.up.x, camera.up.y, camera.up.z)
 	);
 
 	glm::mat4 proj = glm::perspective(glm::radians(45.0f), renderer->extent.width / (float) renderer->extent.height, 0.1f, 10.0f);

@@ -27,8 +27,6 @@ void MessageBus::sendMessageNow(Message msg)
 		this->needsDestroying = true;
 	}
 
-	DEBUG("MESSAGE_BUS - %d %p", msg.type, msg.data);
-
 	for (auto& system : registeredSystems)
 		system->handleMessage(msg);
 }

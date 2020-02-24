@@ -2,6 +2,7 @@
 #include <RenderSystem.h>
 
 #include <ios>
+#include <cmath>
 
 void RenderSystem::update(long elapsedTime)
 {
@@ -130,14 +131,6 @@ void RenderSystem::onCameraPositionUpdate(void * data)
 
 	float * position = (float *) data;
 
-	scene->camera.center.x -= scene->camera.position.x;
-	scene->camera.center.y -= scene->camera.position.y;
-	scene->camera.center.z -= scene->camera.position.z;
-
-	scene->camera.center.x += position[0];
-	scene->camera.center.y += position[1];
-	scene->camera.center.z += position[2];
-
 	scene->camera.position.x = position[0];
 	scene->camera.position.y = position[1];
 	scene->camera.position.z = position[2];
@@ -150,7 +143,7 @@ void RenderSystem::onCameraDirectionUpdate(void * data)
 
 	float * direction = (float *) data;
 
-	scene->camera.center.x = scene->camera.position.x + direction[0];
-	scene->camera.center.y = scene->camera.position.y + direction[1];
-	scene->camera.center.z = scene->camera.position.z + direction[2];
+	scene->camera.direction.x = direction[0];
+	scene->camera.direction.y = direction[1];
+	scene->camera.direction.z = direction[2];
 }

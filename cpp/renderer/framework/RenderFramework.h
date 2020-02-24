@@ -327,7 +327,8 @@ typedef struct
 struct Camera
 {
 	Vec3 position = {0.0f, 0.0f, 0.0f};
-	Vec3 center = {0.0f, 0.0f, -1.0f};
+	Vec3 direction = {0.0f, 0.0f, 1.0f};
+	Vec3 up = {0.0f, 1.0f, 0.0f};
 };
 
 class Context

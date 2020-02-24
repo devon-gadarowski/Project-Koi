@@ -9,23 +9,11 @@
 struct Camera
 {
 	float position[3] = {0.0f, 0.0f, 0.0f};
-	float direction[3] = {0.0f, 0.0f, -1.0f};;
+	float direction[3] = {0.0f, 0.0f, 1.0f};
+	float right[3] = {-1.0f, 0.0f, 0.0f};
 
-	float up[3] = {0.0f, 1.0f, 0.0f};
-
-	void setPosition(float x, float y, float z)
-	{
-		position[0] = x;
-		position[1] = y;
-		position[2] = z;
-	}
-
-	void setDirection(float x, float y, float z)
-	{
-		direction[0] = x;
-		direction[1] = y;
-		direction[2] = z;
-	}
+	float theta = -1.55f;
+	float phi = 1.55f;
 };
 
 enum CameraMovementDirection

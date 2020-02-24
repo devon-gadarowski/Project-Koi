@@ -2,6 +2,7 @@
 #include <CameraSystem.h>
 
 #include <cmath>
+#include <algorithm>
 
 void CameraSystem::update(long elapsedTime)
 {
@@ -11,91 +12,72 @@ void CameraSystem::update(long elapsedTime)
 	bool updated = false;
 	if (forward)
 	{
-		camera.setPosition(
-			camera.position[0] + (camera.direction[0] * (speed * (float) elapsedTime/1000.0f)),
-			camera.position[1] + (camera.direction[1] * (speed * (float) elapsedTime/1000.0f)),
-			camera.position[2] + (camera.direction[2] * (speed * (float) elapsedTime/1000.0f))
-		);
+		camera.position[0] += (camera.direction[0] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[1] += (camera.direction[1] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[2] += (camera.direction[2] * (speed * (float) elapsedTime/1000.0f));
 		updated = true;
 	}
 
 	if (backward)
 	{
-		camera.setPosition(
-			camera.position[0] + (camera.direction[0] * (-speed * (float) elapsedTime/1000.0f)),
-			camera.position[1] + (camera.direction[1] * (-speed * (float) elapsedTime/1000.0f)),
-			camera.position[2] + (camera.direction[2] * (-speed * (float) elapsedTime/1000.0f))
-		);
+		camera.position[0] += (camera.direction[0] * (-speed * (float) elapsedTime/1000.0f));
+		camera.position[1] += (camera.direction[1] * (-speed * (float) elapsedTime/1000.0f));
+		camera.position[2] += (camera.direction[2] * (-speed * (float) elapsedTime/1000.0f));
 		updated = true;
 	}
 
 	if (up)
 	{
-		camera.setPosition(
-			camera.position[0],
-			camera.position[1] + (speed * (float) elapsedTime/1000.0f),
-			camera.position[2]
-		);
+		camera.position[0] = camera.position[0];
+		camera.position[1] += (speed * (float) elapsedTime/1000.0f);
+		camera.position[2] = camera.position[2];
 		updated = true;
 	}
 
 	if (down)
 	{
-		camera.setPosition(
-			camera.position[0],
-			camera.position[1] + (-speed * (float) elapsedTime/1000.0f),
-			camera.position[2]
-		);
+		camera.position[0] = camera.position[0];
+		camera.position[1] += (-speed * (float) elapsedTime/1000.0f);
+		camera.position[2] = camera.position[2];
 		updated = true;
 	}
 
 	if (left)
 	{
-		camera.setPosition(
-			camera.position[0] + (camera.direction[2] * (speed * (float) elapsedTime/1000.0f)),
-			camera.position[1] + (camera.direction[1] * (speed * (float) elapsedTime/1000.0f)),
-			camera.position[2] + (camera.direction[0] * (speed * (float) elapsedTime/1000.0f))
-		);
+		camera.position[0] -= (camera.right[0] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[1] -= (camera.right[1] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[2] -= (camera.right[2] * (speed * (float) elapsedTime/1000.0f));
 		updated = true;
 	}
 
 	if (right)
 	{
-		camera.setPosition(
-			camera.position[0] + (camera.direction[2] * (-speed * (float) elapsedTime/1000.0f)),
-			camera.position[1] + (camera.direction[1] * (-speed * (float) elapsedTime/1000.0f)),
-			camera.position[2] + (camera.direction[0] * (-speed * (float) elapsedTime/1000.0f))
-		);
+		camera.position[0] += (camera.right[0] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[1] += (camera.right[1] * (speed * (float) elapsedTime/1000.0f));
+		camera.position[2] += (camera.right[2] * (speed * (float) elapsedTime/1000.0f));
 		updated = true;
 	}
 
-	if (mouseDelta[0] > 0)
+	if (mouseDelta[0] != 0 || mouseDelta[1] != 0)
 	{
-		//camera.direction[0] += mouseDelta[0] * (speed * (float) elapsedTime/1000.0f);
-		//camera.direction[2] += mouseDelta[0] * (speed * (float) elapsedTime/1000.0f);
+		camera.theta += mouseDelta[0] * (0.1 * (float) elapsedTime/1000.0f);
+		camera.phi += mouseDelta[1] * (0.1 * (float) elapsedTime/1000.0f);
 
-		//updated = true;
-	}
+		camera.phi = std::clamp(camera.phi, 0.04f, 3.1f);
 
-	if (mouseDelta[1] > 0)
-	{
-		camera.direction[2] += mouseDelta[0] * (-speed * (float) elapsedTime/1000.0f);
+		camera.direction[0] = std::cos(camera.theta) * std::sin(camera.phi);
+		camera.direction[1] = std::cos(camera.phi);
+		camera.direction[2] = std::sin(camera.theta) * std::sin(camera.phi);
+
+		camera.right[0] = std::cos(camera.theta + 3.14159 / 2);
+		camera.right[1] = 0.0f;
+		camera.right[2] = std::sin(camera.theta + 3.14159 / 2);
+
+		mouseDelta[0] = 0.0;
+		mouseDelta[1] = 0.0;
 
 		updated = true;
 	}
-
-	double normalizationScalar = 0;
-	normalizationScalar += camera.direction[0] * camera.direction[0];
-	normalizationScalar += camera.direction[1] * camera.direction[1];
-	normalizationScalar += camera.direction[2] * camera.direction[2];
-	normalizationScalar = std::sqrt(normalizationScalar);
-
-	camera.direction[0] /= normalizationScalar;
-	camera.direction[1] /= normalizationScalar;
-	camera.direction[2] /= normalizationScalar;
-
-	mouseDelta[0] = 0.0;
-	mouseDelta[1] = 0.0;
 
 	if (updated)
 	{
@@ -209,6 +191,7 @@ void CameraSystem::startRunning(void * data)
 	running = true;
 
 	msgBus->sendMessage(Message(SetCameraPosition, camera.position));
+	msgBus->sendMessage(Message(SetCameraDirection, camera.direction));
 }
 
 void CameraSystem::stopRunning(void * data)
