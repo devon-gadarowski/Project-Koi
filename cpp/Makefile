@@ -22,15 +22,19 @@ CAMERA = camera/CameraSystem.cpp
 SYSTEMS = $(SYSTEM_FRAMEWORK) $(CONSOLE) $(RENDERER) $(INPUT) $(CAMERA)
 
 ProjectKoi: ProjectKoi.cpp $(SYSTEMS)
+	rm -f ProjectKoi
 	bash compile_shaders.sh
 	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(LINUX_LDFLAGS)
 	./ProjectKoi
 	rm -f ProjectKoi
 
 build: ProjectKoi.cpp $(SYSTEMS)
+	rm -f ProjectKoi
 	bash compile_shaders.sh
 	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(LINUX_LDFLAGS)
 
 test:
 	./ProjectKoi
+
+clean:
 	rm -f ProjectKoi
