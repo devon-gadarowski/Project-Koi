@@ -3,9 +3,30 @@
 
 using namespace RenderFramework;
 
-void Renderer::draw()
+void Renderer::present()
 {
+	uint32_t imageIndex = frameIndex % length;
 
+	VkResult result = VK_SUCCESS;
+
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pNext = nullptr;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &renderFinished;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &swapchain;
+	presentInfo.pImageIndices = &imageIndex;
+	presentInfo.pResults = &result;
+
+	if (result != VK_SUCCESS)
+	{
+		PANIC("RENDERER - Failed to present swapchain image %d", result);
+	}
+
+	vkQueuePresentKHR(context->presentQueue.queue, &presentInfo);
+
+	frameIndex++;
 }
 
 Renderer::Renderer(Context * context)

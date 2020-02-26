@@ -631,7 +631,7 @@ void destroyVkSwapchainKHR(VkDevice logicalDevice, VkSwapchainKHR * swapchain)
 	DEBUG("RENDER_FRAMEWORK - VkSwapchainKHR Destroyed");
 }
 
-void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkRenderPass * renderPass)
+void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkAttachmentLoadOp loadOp, VkRenderPass * renderPass)
 {
 	std::vector<VkAttachmentDescription> attachments;
 
@@ -648,7 +648,7 @@ void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFor
 		colorAttachment.flags = 0;
 		colorAttachment.format = colorFormat;
 		colorAttachment.samples = sampleCount;
-		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment.loadOp = loadOp;
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -665,7 +665,7 @@ void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFor
 		depthAttachment.flags = 0;
 		depthAttachment.format = depthFormat;
 		depthAttachment.samples = sampleCount;
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttachment.loadOp = loadOp;
 		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -736,6 +736,16 @@ void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFor
 	}
 
 	DEBUG("RENDER_FRAMEWORK - VkRenderPass Created");
+}
+
+void createVkRenderPassOverlay(VkDevice device, VkFormat colorFormat, VkRenderPass * renderPass)
+{
+	createVkRenderPass(device, colorFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD, renderPass);
+}
+
+void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkRenderPass * renderPass)
+{
+	createVkRenderPass(device, colorFormat, depthFormat, sampleCount, VK_ATTACHMENT_LOAD_OP_CLEAR, renderPass);
 }
 
 void destroyVkRenderPass(VkDevice device, VkRenderPass * renderPass)

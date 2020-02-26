@@ -363,7 +363,7 @@ class Renderer
 
 		void createSwapchain();
 		void destroySwapchain();
-		void draw();
+		void present();
 
 		uint32_t frameIndex = 0;
 
@@ -443,6 +443,27 @@ class Scene3D
 			Renderer * renderer;
 };
 
+class GUI
+{
+	public:
+		GUI(Context * context, Renderer * renderer);
+		~GUI();
+
+		void update(long elapsedTime);
+		void draw();
+
+		Context * context;
+		Renderer * renderer;
+
+		VkDescriptorPool descriptorPool;
+		VkRenderPass renderPass;
+
+		std::vector<VkFramebuffer> framebuffers;
+
+		std::vector<VkCommandPool> commandPools;
+		std::vector<VkCommandBuffer> commandBuffers;
+};
+
 // GLFWwindow
 void createBorderlessWindow(GLFWwindow ** window);
 void destroyWindow(GLFWwindow ** window);
@@ -483,6 +504,7 @@ void allocateVkCommandBuffers(VkDevice device, const void * pNext, VkCommandPool
 void createVkFence(VkDevice device, const void * pNext, VkFenceCreateFlags flags, VkFence * fence);
 
 // VkRenderPass
+void createVkRenderPassOverlay(VkDevice device, VkFormat colorFormat, VkRenderPass * renderPass);
 void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkRenderPass * renderPass);
 void destroyVkRenderPass(VkDevice device, VkRenderPass * renderPass);
 
@@ -499,6 +521,9 @@ void createVkImage(VkPhysicalDevice physicalDevice, VkDevice device, VkImageType
 void createVkImage(VkPhysicalDevice physicalDevice, VkDevice device, const void * pNext, VkImageCreateFlags flags, VkImageType imageType, VkFormat format, VkExtent3D extent, uint32_t miplevels, uint32_t arrayLayers, VkSampleCountFlagBits samples, VkImageTiling tiling, VkImageUsageFlags usage, VkSharingMode sharingMode, uint32_t queueFamilyIndexCount, const uint32_t * pQueueFamilyIndices, VkImageLayout initialLayout, VkMemoryPropertyFlags properties, VkImage * image, VkDeviceMemory * imageMemory);
 
 void transitionImageLayout(Context * context, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t layers);
+
+VkCommandBuffer beginSingleTimeCommands(Context * context);
+void endSingleTimeCommands(Context * context, VkCommandBuffer commandBuffer);
 
 void createVkImageView(Context * context, VkImage image, VkFormat format, uint32_t miplevels, uint32_t arrayLayers, VkImageAspectFlagBits aspectFlags, VkImageView * imageView);
 void createVkImageView(VkPhysicalDevice physicalDevice, VkDevice device, VkImage image, VkImageViewType viewType, VkFormat format, uint32_t miplevels, uint32_t arrayLayers, VkImageAspectFlagBits aspectFlags, VkImageView * imageView);

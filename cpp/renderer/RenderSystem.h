@@ -18,6 +18,7 @@ class RenderSystem : public System
 		RenderFramework::Context * context;
 		RenderFramework::Renderer * renderer;
 		RenderFramework::Scene3D * scene;
+		RenderFramework::GUI * gui;
 
 		bool initialized = false;
 		bool sceneLoaded = false;

@@ -37,5 +37,10 @@ void main()
 	// OPACITY
 	vec4 opacity = vec4(1.0, 1.0, 1.0, inOpacity);
 
-	outColor = vec4(ambient + diffuse + specular, opacity) * objectColor;
+	// FOG
+	vec3 fogColor = vec3(1.0, 1.0, 1.0);
+	float fogFactor = clamp((sqrt(dot(inPos, inPos)) - 40.0) / 10.0, 0.0, 1.0);
+	vec4 fog = vec4(fogFactor * fogColor, 1.0);
+
+	outColor = vec4(ambient + diffuse + specular, opacity) * objectColor + fog;
 }

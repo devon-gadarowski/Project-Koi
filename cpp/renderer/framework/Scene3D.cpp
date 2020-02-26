@@ -62,25 +62,6 @@ void Scene3D::draw()
 	{
 		PANIC("RENDERER - Failed to submit draw command buffer %d", result);
 	}
-
-	VkPresentInfoKHR presentInfo = {};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.pNext = nullptr;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &renderer->renderFinished;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &renderer->swapchain;
-	presentInfo.pImageIndices = &imageIndex;
-	presentInfo.pResults = &result;
-
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDERER - Failed to present swapchain image %d", result);
-	}
-
-	vkQueuePresentKHR(context->presentQueue.queue, &presentInfo);
-
-	renderer->frameIndex++;
 }
 
 Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)

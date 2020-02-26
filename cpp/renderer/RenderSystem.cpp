@@ -25,6 +25,11 @@ void RenderSystem::update(long elapsedTime)
 
 	scene->updateUBO();
 	scene->draw();
+
+	gui->update(elapsedTime);
+	gui->draw();
+
+	renderer->present();
 }
 
 RenderSystem::RenderSystem()
@@ -45,6 +50,9 @@ RenderSystem::~RenderSystem()
 	if (scene != nullptr)
 		delete scene;
 
+	if (gui != nullptr)
+		delete gui;
+
 	if (renderer != nullptr)
 		delete renderer;
 
@@ -61,6 +69,8 @@ void RenderSystem::initialize(void * data)
 
 	context = new RenderFramework::Context();
 	renderer = new RenderFramework::Renderer(context);
+
+	gui = new RenderFramework::GUI(context, renderer);
 
 	msgBus->sendMessage(Message(GLFWwindowCreated, context->window));
 
