@@ -10,9 +10,9 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec3 inNormal;
+layout(location = 4) in uint inTexID;
 
-layout(location = 4) in float inOpacity;
-layout(location = 5) in uint inTexID;
+layout(location = 5) in float inOpacity;
 layout(location = 6) in vec3 inAmbient;
 layout(location = 7) in vec3 inDiffuse;
 layout(location = 8) in vec3 inSpecular;

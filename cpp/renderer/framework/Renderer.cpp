@@ -3,10 +3,40 @@
 
 using namespace RenderFramework;
 
-void Renderer::present()
+uint32_t Renderer::getNextImage()
 {
 	uint32_t imageIndex = frameIndex % length;
+    vkAcquireNextImageKHR(context->device, swapchain, UINT64_MAX, imageAvailable, VK_NULL_HANDLE, &imageIndex);
 
+	vkWaitForFences(context->device, 1, &fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
+	vkResetFences(context->device, 1, &fences[imageIndex]);
+
+	return imageIndex;
+}
+
+void Renderer::render(uint32_t imageIndex, std::vector<VkCommandBuffer> commandBuffers)
+{
+	VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &imageAvailable;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = commandBuffers.size();
+	submitInfo.pCommandBuffers = commandBuffers.data();
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderFinished;
+
+	VkResult result = vkQueueSubmit(context->graphicsQueue.queue, 1, &submitInfo, fences[imageIndex]);
+	if (result != VK_SUCCESS)
+	{
+		PANIC("RENDERER - Failed to submit draw command buffer %d", result);
+	}
+}
+
+void Renderer::present(uint32_t imageIndex)
+{
 	VkResult result = VK_SUCCESS;
 
 	VkPresentInfoKHR presentInfo = {};
@@ -115,12 +145,14 @@ void Renderer::createSwapchain()
 
 	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &imageAvailable);
 	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &renderFinished);
+	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &guiFinished);
 }
 
 void Renderer::destroySwapchain()
 {
 	vkDestroySemaphore(context->device, imageAvailable, nullptr);
 	vkDestroySemaphore(context->device, renderFinished, nullptr);
+	vkDestroySemaphore(context->device, guiFinished, nullptr);
 
 	for (int i = 0; i < length; i++)
 	{

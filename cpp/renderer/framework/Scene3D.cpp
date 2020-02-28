@@ -36,6 +36,11 @@ void Scene3D::updateUBO()
 	vkUnmapMemory(context->device, uniformBuffersMemory[renderer->frameIndex % renderer->length]);
 }
 
+VkCommandBuffer Scene3D::getFrame(uint32_t imageIndex)
+{
+	return commandBuffers[imageIndex];
+}
+
 void Scene3D::draw()
 {
 	uint32_t imageIndex = renderer->frameIndex % renderer->length;
@@ -92,7 +97,36 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 	int i = 0;
 	for (auto& dTextureName : diffuseTextureNames)
 	{
-		loadMeshTexture(context, renderer, dTextureName.c_str(), &textureImages[i], &textureImageMemorys[i], &textureImageViews[i]);
+		try
+		{
+			loadMeshTexture(context, renderer, dTextureName.c_str(), &textureImages[i], &textureImageMemorys[i], &textureImageViews[i]);
+		}
+		catch (int e)
+		{
+			for (int i = 0; i < textureImages.size(); i++)
+			{
+				vkDestroyImage(context->device, textureImages[i], nullptr);
+				vkFreeMemory(context->device, textureImageMemorys[i], nullptr);
+				vkDestroyImageView(context->device, textureImageViews[i], nullptr);
+			}
+
+			for (auto& mesh : meshes)
+			{
+				vkDestroyBuffer(context->device, mesh.vertexBuffer, nullptr);
+				vkFreeMemory(context->device, mesh.vertexMemory, nullptr);
+
+				vkDestroyBuffer(context->device, mesh.indexBuffer, nullptr);
+				vkFreeMemory(context->device, mesh.indexMemory, nullptr);
+
+				vkDestroyBuffer(context->device, mesh.instanceBuffer, nullptr);
+				vkFreeMemory(context->device, mesh.instanceMemory, nullptr);
+			}
+
+			vkDestroyShaderModule(context->device, vertexShader, nullptr);
+			vkDestroyShaderModule(context->device, fragmentShader, nullptr);
+
+			throw;
+		}
 		i++;
 	}
 
@@ -122,6 +156,7 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 Scene3D::~Scene3D()
 {
 	vkQueueWaitIdle(context->graphicsQueue.queue);
+	vkQueueWaitIdle(context->presentQueue.queue);
 
 	vkFreeCommandBuffers(context->device, context->graphicsCommandPool, renderer->length, commandBuffers.data());
 
@@ -160,7 +195,6 @@ Scene3D::~Scene3D()
 
 	vkDestroyShaderModule(context->device, vertexShader, nullptr);
 	vkDestroyShaderModule(context->device, fragmentShader, nullptr);
-
 
 	DEBUG("SCENE3D - Scene Destroyed");
 }

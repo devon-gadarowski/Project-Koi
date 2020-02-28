@@ -22,7 +22,7 @@ CAMERA = camera/CameraSystem.cpp
 
 IMGUI = 3rd_party/dear_imgui/imgui.cpp 3rd_party/dear_imgui/imgui_demo.cpp 3rd_party/dear_imgui/imgui_draw.cpp 3rd_party/dear_imgui/imgui_widgets.cpp 3rd_party/dear_imgui/examples/imgui_impl_vulkan.cpp 3rd_party/dear_imgui/examples/imgui_impl_glfw.cpp
 
-SYSTEMS = $(SYSTEM_FRAMEWORK) $(CONSOLE) $(RENDERER) $(INPUT) $(CAMERA)
+SYSTEMS = $(SYSTEM_FRAMEWORK) $(CONSOLE) $(RENDERER) $(INPUT) $(CAMERA) 3rd_party/dds.c
 
 ProjectKoi: ProjectKoi.cpp
 	rm -f ProjectKoi
@@ -34,7 +34,7 @@ ProjectKoi: ProjectKoi.cpp
 build: ProjectKoi.cpp $(SYSTEMS)
 	rm -f ProjectKoi
 	bash compile_shaders.sh
-	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(LINUX_LDFLAGS)
+	g++ -g $(LINUX_CFLAGS) -o ProjectKoi ProjectKoi.cpp $(SYSTEMS) $(IMGUI) $(LINUX_LDFLAGS)
 
 test:
 	./ProjectKoi

@@ -103,6 +103,7 @@ struct Vertex
 	Vec3 color;
 	Vec2 tex;
 	Vec3 normal;
+	uint32_t texID;
 
 	static void getAttributeDescriptions(uint32_t binding, std::vector<VkVertexInputAttributeDescription> * attribDesc)
 	{
@@ -129,6 +130,12 @@ struct Vertex
 		attribDesc->back().binding = binding;
 		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
 		attribDesc->back().offset = offsetof(Vertex, normal);
+
+		attribDesc->emplace_back();
+		attribDesc->back().location = attribDesc->size() - 1;
+		attribDesc->back().binding = binding;
+		attribDesc->back().format = VK_FORMAT_R32_UINT;
+		attribDesc->back().offset = offsetof(Vertex, texID);
 	}
 
 	bool operator == (const Vertex& other) const
@@ -162,11 +169,11 @@ struct Instance
 		attribDesc->back().format = VK_FORMAT_R32_SFLOAT;
 		attribDesc->back().offset = offsetof(Instance, opacity);
 
-		attribDesc->emplace_back();
+		/*attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
 		attribDesc->back().format = VK_FORMAT_R32_UINT;
-		attribDesc->back().offset = offsetof(Instance, material.textureIndex);
+		attribDesc->back().offset = offsetof(Instance, material.textureIndex);*/
 
 		attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
@@ -363,7 +370,10 @@ class Renderer
 
 		void createSwapchain();
 		void destroySwapchain();
-		void present();
+
+		uint32_t getNextImage();
+		void render(uint32_t imageIndex, std::vector<VkCommandBuffer> commandBuffers);
+		void present(uint32_t imageIndex);
 
 		uint32_t frameIndex = 0;
 
@@ -383,6 +393,7 @@ class Renderer
 
 		VkSemaphore imageAvailable;
 		VkSemaphore renderFinished;
+		VkSemaphore guiFinished;
 
 		VkFormat colorFormat;
 		VkColorSpaceKHR colorSpace;
@@ -411,6 +422,7 @@ class Scene3D
 		void createPipeline();
 		void recordCommands();
 		void updateUBO();
+		VkCommandBuffer getFrame(uint32_t imageIndex);
 		void draw();
 
 		UBO ubo;
@@ -450,6 +462,7 @@ class GUI
 		~GUI();
 
 		void update(long elapsedTime);
+		VkCommandBuffer getFrame(uint32_t imageIndex);
 		void draw();
 
 		Context * context;

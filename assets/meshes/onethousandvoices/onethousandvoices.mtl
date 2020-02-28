@@ -1,0 +1,24 @@
+# Blender MTL File: 'onethousandvoices.blend'
+# Material Count: 2
+
+newmtl 1000VoicesBarrel
+Ns 198.039216
+Ka 1.000000 1.000000 1.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.096386 0.096386 0.096386
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd /home/devon/Desktop/projectkoi/v3/app/src/main/assets/meshes/onethousandvoices/OneThousandVoices02_Diffuse.dds
+
+newmtl 1000VoicesStock
+Ns 198.039216
+Ka 1.000000 1.000000 1.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.096000 0.096000 0.096000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd /home/devon/Desktop/projectkoi/v3/app/src/main/assets/meshes/onethousandvoices/OneThousandVoices01_Diffuse.dds

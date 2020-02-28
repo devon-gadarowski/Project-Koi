@@ -23,13 +23,18 @@ void RenderSystem::update(long elapsedTime)
 		return;
 	}
 
+	uint32_t imageIndex = renderer->getNextImage();
+
+	std::vector<VkCommandBuffer> commandBuffers(2);
+
 	scene->updateUBO();
-	scene->draw();
+	commandBuffers[0] = scene->getFrame(imageIndex);
 
 	gui->update(elapsedTime);
-	gui->draw();
+	commandBuffers[1] = gui->getFrame(imageIndex);
 
-	renderer->present();
+	renderer->render(imageIndex, commandBuffers);
+	renderer->present(imageIndex);
 }
 
 RenderSystem::RenderSystem()
@@ -47,17 +52,7 @@ RenderSystem::RenderSystem()
 
 RenderSystem::~RenderSystem()
 {
-	if (scene != nullptr)
-		delete scene;
-
-	if (gui != nullptr)
-		delete gui;
-
-	if (renderer != nullptr)
-		delete renderer;
-
-	if (context != nullptr)
-		delete context;
+	shutdown(nullptr);
 
 	DEBUG("RENDER_SYSTEM - RenderSystem Destroyed");
 }
@@ -79,21 +74,21 @@ void RenderSystem::initialize(void * data)
 
 void RenderSystem::shutdown(void * data)
 {
-	if (sceneLoaded)
-		stopScene(nullptr);
 
-	if (renderer != nullptr)
+	stopScene(nullptr);
+
+	if (initialized)
+	{
+		initialized = false;
+		delete gui;
 		delete renderer;
-
-	if (context != nullptr)
 		delete context;
+	}
 
 	scene = nullptr;
+	gui = nullptr;
 	renderer = nullptr;
 	context = nullptr;
-
-	initialized = false;
-	sceneLoaded = false;
 }
 
 void RenderSystem::loadScene(void * data)
@@ -111,7 +106,7 @@ void RenderSystem::loadScene(void * data)
 
 		msgBus->sendMessage(Message(SceneLoaded, scene));
 	}
-	catch (const std::ios_base::failure& e)
+	catch (int e)
 	{
 		WARN("RENDER_SYSTEM - Failed to load scence %s", ((std::string *) data)->c_str());
 		shutdown(nullptr);
@@ -120,12 +115,13 @@ void RenderSystem::loadScene(void * data)
 
 void RenderSystem::stopScene(void * data)
 {
-	if (scene != nullptr)
+	if (sceneLoaded)
+	{
+		sceneLoaded = false;
 		delete scene;
+	}
 
 	scene = nullptr;
-	sceneLoaded = false;
-
 	msgBus->sendMessage(Message(SceneDestroyed, nullptr));
 }
 

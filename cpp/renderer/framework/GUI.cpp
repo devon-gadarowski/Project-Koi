@@ -13,16 +13,59 @@ void GUI::update(long elapsedTime)
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::ShowDemoWindow();
+	//ImGui::ShowDemoWindow();
+    ImGui::Begin("FPS");
+    ImGui::Text("%0.1f", 6000.0 / elapsedTime);
+    ImGui::End();
 
 	ImGui::Render();
+}
+
+VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
+{
+	vkResetCommandPool(context->device, commandPools[imageIndex], 0);
+	VkCommandBufferBeginInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(commandBuffers[imageIndex], &info);
+
+	vkCmdPipelineBarrier(
+		commandBuffers[imageIndex],
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		0, nullptr);
+
+	VkClearValue clearColors[3];
+	clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+	clearColors[1].depthStencil = {1.0f, 0};
+	clearColors[2].color = {0.0f, 0.0f, 0.0f, 1.0f};
+
+	VkRenderPassBeginInfo passInfo = {};
+	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	passInfo.renderPass = renderPass;
+	passInfo.framebuffer = framebuffers[imageIndex];
+	passInfo.renderArea.extent.width = renderer->extent.width;
+	passInfo.renderArea.extent.height = renderer->extent.height;
+	passInfo.clearValueCount = 1;
+	passInfo.pClearValues = clearColors;
+	vkCmdBeginRenderPass(commandBuffers[imageIndex], &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[imageIndex]);
+
+	vkCmdEndRenderPass(commandBuffers[imageIndex]);
+	vkEndCommandBuffer(commandBuffers[imageIndex]);
+
+	return commandBuffers[imageIndex];
 }
 
 void GUI::draw()
 {
 	uint32_t imageIndex = renderer->frameIndex % renderer->length;
 
-	//vkAcquireNextImageKHR(context->device, renderer->swapchain, UINT64_MAX, renderer->imageAvailable, VK_NULL_HANDLE, &imageIndex);
+	//vkQueueWaitIdle(context->graphicsQueue.queue);
 
 	vkWaitForFences(context->device, 1, &renderer->fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
 	vkResetFences(context->device, 1, &renderer->fences[imageIndex]);
@@ -32,6 +75,15 @@ void GUI::draw()
 	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffers[imageIndex], &info);
+
+	vkCmdPipelineBarrier(
+		commandBuffers[imageIndex],
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		0, nullptr);
 
 	VkClearValue clearColors[3];
 	clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -60,13 +112,13 @@ void GUI::draw()
 
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 2;
-	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &renderer->renderFinished;
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderer->renderFinished;
+	submitInfo.pSignalSemaphores = &renderer->guiFinished;
 
 	VkResult result = vkQueueSubmit(context->graphicsQueue.queue, 1, &submitInfo, renderer->fences[imageIndex]);
 	if (result != VK_SUCCESS)
@@ -144,10 +196,18 @@ GUI::GUI(Context * context, Renderer * renderer)
 	VkCommandBuffer command_buffer = beginSingleTimeCommands(context);
 	ImGui_ImplVulkan_CreateFontsTexture(command_buffer);
 	endSingleTimeCommands(context, command_buffer);
+
+	DEBUG("GUI - GUI Created");
 }
 
 GUI::~GUI()
 {
+	vkQueueWaitIdle(context->graphicsQueue.queue);
+	vkQueueWaitIdle(context->presentQueue.queue);
+
+	for (int i = 0; i < renderer->length; i++)
+		vkDestroyFramebuffer(context->device, framebuffers[i], nullptr);
+
 	for (int i = 0; i < renderer->length; i++)
 		vkDestroyCommandPool(context->device, commandPools[i], nullptr);
 
@@ -157,4 +217,6 @@ GUI::~GUI()
 	ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
+	DEBUG("GUI - GUI Destroyed");
 }

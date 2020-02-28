@@ -4,6 +4,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <dds.h>
+
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
@@ -631,7 +633,7 @@ void destroyVkSwapchainKHR(VkDevice logicalDevice, VkSwapchainKHR * swapchain)
 	DEBUG("RENDER_FRAMEWORK - VkSwapchainKHR Destroyed");
 }
 
-void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkAttachmentLoadOp loadOp, VkRenderPass * renderPass)
+void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkAttachmentLoadOp loadOp, std::vector<VkSubpassDependency> dependencies, VkRenderPass * renderPass)
 {
 	std::vector<VkAttachmentDescription> attachments;
 
@@ -707,16 +709,6 @@ void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFor
 	subpass.preserveAttachmentCount = 0;
 	subpass.pPreserveAttachments = nullptr;
 
-	std::vector<VkSubpassDependency> dependencies(1);
-
-	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependencies[0].dstSubpass = 0;
-	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependencies[0].srcAccessMask = 0;
-	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	dependencies[0].dependencyFlags = 0;
-
 	VkRenderPassCreateInfo renderPassInfo = {};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassInfo.pNext = nullptr;
@@ -738,14 +730,34 @@ void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFor
 	DEBUG("RENDER_FRAMEWORK - VkRenderPass Created");
 }
 
-void createVkRenderPassOverlay(VkDevice device, VkFormat colorFormat, VkRenderPass * renderPass)
-{
-	createVkRenderPass(device, colorFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD, renderPass);
-}
-
 void createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount, VkRenderPass * renderPass)
 {
-	createVkRenderPass(device, colorFormat, depthFormat, sampleCount, VK_ATTACHMENT_LOAD_OP_CLEAR, renderPass);
+	std::vector<VkSubpassDependency> dependencies(1);
+
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = 0;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = 0;
+
+	createVkRenderPass(device, colorFormat, depthFormat, sampleCount, VK_ATTACHMENT_LOAD_OP_CLEAR, dependencies, renderPass);
+}
+
+void createVkRenderPassOverlay(VkDevice device, VkFormat colorFormat, VkRenderPass * renderPass)
+{
+	std::vector<VkSubpassDependency> dependencies(1);
+
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = 0;
+
+	createVkRenderPass(device, colorFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD, dependencies, renderPass);
 }
 
 void destroyVkRenderPass(VkDevice device, VkRenderPass * renderPass)
@@ -1334,6 +1346,8 @@ void copyBufferToImage(Context * context, VkBuffer buffer, VkImage image, uint32
 void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * vertices,
              std::vector<uint32_t> * indices, std::vector<std::string> * diffuseTextureNames)
 {
+	int totalVerts, face;
+
 	std::string err, warn;
 
 	tinyobj::attrib_t attrib;
@@ -1344,38 +1358,51 @@ void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * v
 
 	std::unordered_map<Vertex, uint32_t> uniqueVertices;
 
+	// TODO: Cleanup TexID and investigate texCoords errors
+	// Some texID values are garbage
+
 	for (auto& shape : shapes)
 	{
-		for (auto& index : shape.mesh.indices)
-		{	
-			Vertex vertex = {};
-
-			vertex.position = {
-				attrib.vertices[3 * index.vertex_index + 0],
-				attrib.vertices[3 * index.vertex_index + 1],
-				attrib.vertices[3 * index.vertex_index + 2]
-			};
-
-			vertex.tex = {
-				attrib.texcoords[2 * index.texcoord_index + 0],
-				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-			};
-
-			vertex.normal = {
-				attrib.normals[3 * index.normal_index + 0],
-				attrib.normals[3 * index.normal_index + 1],
-				attrib.normals[3 * index.normal_index + 2]
-			};
-
-			vertex.color = {1.0f, 1.0f, 1.0f};
-
-			if (uniqueVertices.count(vertex) == 0)
+		size_t index_offset = 0;
+		for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++)
+		{
+			int fv = shape.mesh.num_face_vertices[f];
+			for (size_t v = 0; v < fv; v++)
 			{
-				uniqueVertices[vertex] = static_cast<uint32_t>(vertices->size());
-				vertices->push_back(vertex);
-			}
+				tinyobj::index_t index = shape.mesh.indices[index_offset + v];
 
-			indices->push_back(uniqueVertices[vertex]);
+				Vertex vertex = {};
+
+				vertex.position = {
+					attrib.vertices[3 * index.vertex_index + 0],
+					attrib.vertices[3 * index.vertex_index + 1],
+					attrib.vertices[3 * index.vertex_index + 2]
+				};
+
+				vertex.tex = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
+
+				vertex.normal = {
+					attrib.normals[3 * index.normal_index + 0],
+					attrib.normals[3 * index.normal_index + 1],
+					attrib.normals[3 * index.normal_index + 2]
+				};
+
+				vertex.color = {1.0f, 1.0f, 1.0f};
+
+				vertex.texID = diffuseTextureNames->size() + shape.mesh.material_ids[f];
+
+				if (uniqueVertices.count(vertex) == 0)
+				{
+					uniqueVertices[vertex] = static_cast<uint32_t>(vertices->size());
+					vertices->push_back(vertex);
+				}
+
+				indices->push_back(uniqueVertices[vertex]);
+			}
+			index_offset += fv;
 		}
 	}
 
@@ -1401,8 +1428,9 @@ void loadSceneModels(std::string filename, std::vector<Mesh> * meshes, std::vect
 
 	if (!shoppingList.is_open())
 	{
-        shoppingList.exceptions(shoppingList.failbit);
-		return;
+		throw 117;
+		//shoppingList.exceptions(shoppingList.failbit);
+		//return;
 	}
 
 	std::string location;
@@ -1467,21 +1495,91 @@ void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler)
 	}
 }
 
+int getFileExtension(const char * filename)
+{
+	int i, j;
+
+	char extension[10]; 
+
+	enum extensions {
+		dds = 0,
+		png,
+		jpg,
+		bmp,
+		other
+	};
+
+	for (i = 0; filename[i] != '\0'; i++);
+
+	for ( ; filename[i-1] != '.'; i--);
+
+	for (j = 0; filename[i] != '\0'; i++, j++)
+		extension[j] = filename[i];
+
+	extension[j] = '\0';
+
+	if (strcmp(extension, "dds") == 0)
+		return dds;
+
+	if (strcmp(extension, "png") == 0)
+		return png;
+
+	if (strcmp(extension, "jpg") == 0)
+		return jpg;
+
+	if (strcmp(extension, "bmp") == 0)
+		return bmp;
+
+	return other;
+}
+
 void loadMeshTexture(Context * context, Renderer * renderer, const char * textureName,
                      VkImage * image, VkDeviceMemory * imageMemory, VkImageView * imageView)
 {
+	unsigned char * pixels = nullptr;
+	dds_info imageInfo;
 	int width, height, channels;
+	VkDeviceSize imageSize;
+	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 
-	stbi_uc * pixels = stbi_load(textureName, &width, &height, &channels, STBI_rgb_alpha);
+	if (getFileExtension(textureName) == 0)
+	{
+		static const dds_u32 supfmt[] = { DDS_FMT_R8G8B8A8, DDS_FMT_B8G8R8A8, DDS_FMT_B8G8R8X8, DDS_FMT_DXT1, DDS_FMT_DXT3, DDS_FMT_DXT5, 0 };
+		int result = dds_load_from_file(textureName, &imageInfo, supfmt);
+
+		if (result != DDS_SUCCESS)
+		{
+			PANIC("RENDER_FRAMEWORK - Failed to load texture %s %d", textureName, result);
+			throw 117;
+		}
+
+		width = imageInfo.image.width;
+		height = imageInfo.image.height;
+
+		DEBUG("%d %d %d %d", width, height, imageInfo.image.size, imageInfo.image.format);
+
+		pixels = (unsigned char *) malloc(width * height * sizeof(unsigned char));
+
+		if (imageInfo.image.format == DDS_FMT_DXT5)
+			format = VK_FORMAT_BC3_UNORM_BLOCK;
+
+		dds_read(&imageInfo, pixels);
+
+		dds_close(&imageInfo);
+
+		imageSize = width * height;
+	}
+	else
+	{
+		pixels = stbi_load(textureName, &width, &height, &channels, STBI_rgb_alpha);
+		imageSize = width * height * 4;
+	}
 
 	if (!pixels)
 	{
 		PANIC("RENDER_FRAMEWORK - Failed to load texture %s", textureName);
-		return;
+		throw 117;
 	}
-
-	VkDeviceSize imageSize = width * height * 4;
-
 	VkBuffer stagingBuffer;
 	VkDeviceMemory stagingBufferMemory;
 	createBuffer(context, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1490,26 +1588,26 @@ void loadMeshTexture(Context * context, Renderer * renderer, const char * textur
 
 	void * data;
 	vkMapMemory(context->device, stagingBufferMemory, 0, imageSize, 0, &data);
-	memcpy(((stbi_uc *) data), pixels, imageSize);
+	memcpy(((unsigned char *) data), pixels, imageSize);
 	vkUnmapMemory(context->device, stagingBufferMemory);
 
-	stbi_image_free(pixels);
+	free(pixels);
 
 	VkExtent2D e = {};
 	e.width = width;
 	e.height = height;
 
-	createVkImage(context, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, e, 1, 1, VK_SAMPLE_COUNT_1_BIT,
+	createVkImage(context, VK_IMAGE_TYPE_2D, format, e, 1, 1, VK_SAMPLE_COUNT_1_BIT,
 	            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 	            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, imageMemory);
 
-	transitionImageLayout(context, *image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+	transitionImageLayout(context, *image, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
 
 	copyBufferToImage(context, stagingBuffer, *image, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1);
 
-	transitionImageLayout(context, *image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
+	transitionImageLayout(context, *image, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
 
-	createVkImageView(context, *image, VK_FORMAT_R8G8B8A8_UNORM, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, imageView);
+	createVkImageView(context, *image, format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, imageView);
 
 	vkDestroyBuffer(context->device, stagingBuffer, nullptr);
 	vkFreeMemory(context->device, stagingBufferMemory, nullptr);
