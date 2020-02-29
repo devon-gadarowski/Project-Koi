@@ -1,1 +1,8 @@
-/assets/
+
+# Ignore Model Data
+/assets/meshes/
+
+# Ignore Build
+/cpp/ProjectKoi
+/assets/shaders/*.spv
+/cpp/*.txt

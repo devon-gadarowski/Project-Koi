@@ -1,3 +1,0 @@
-../assets/meshes/cube/
-1
-cube.obj

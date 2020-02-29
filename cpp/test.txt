@@ -1,3 +1,0 @@
-../assets/meshes/coordinates/
-1
-coordinates.obj

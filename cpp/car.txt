@@ -1,3 +1,0 @@
-../assets/meshes/Porsche/
-1
-Porsche_911_GT2.obj
