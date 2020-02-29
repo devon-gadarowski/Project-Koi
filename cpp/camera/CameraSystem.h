@@ -52,8 +52,8 @@ class CameraSystem : public System
 
 		void startRunning(void * data);
 		void stopRunning(void * data);
-		void startMotion(void * data);
-		void stopMotion(void * data);
+		void onKeyPress(void * data);
+		void onKeyRelease(void * data);
 		void setMouseDelta(void * data);
 };
 

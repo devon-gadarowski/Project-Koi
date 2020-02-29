@@ -9,7 +9,7 @@
 
 using namespace RenderFramework;
 
-void Scene3D::updateUBO()
+void Scene3D::updateUBO(uint32_t imageIndex)
 {
 	glm::mat4 view = glm::lookAt(
 		glm::vec3(camera.position.x, camera.position.y, camera.position.z),
@@ -31,9 +31,9 @@ void Scene3D::updateUBO()
 	}
 
 	void* data;
-	vkMapMemory(context->device, uniformBuffersMemory[renderer->frameIndex % renderer->length], 0, sizeof(ubo), 0, &data);
+	vkMapMemory(context->device, uniformBuffersMemory[imageIndex], 0, sizeof(ubo), 0, &data);
 	memcpy(data, &ubo, sizeof(ubo));
-	vkUnmapMemory(context->device, uniformBuffersMemory[renderer->frameIndex % renderer->length]);
+	vkUnmapMemory(context->device, uniformBuffersMemory[imageIndex]);
 }
 
 VkCommandBuffer Scene3D::getFrame(uint32_t imageIndex)
@@ -76,7 +76,7 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 
 	std::vector<std::string> diffuseTextureNames;
 
-	RenderFramework::loadSceneModels(filename, &meshes, &diffuseTextureNames);
+	std::string location = RenderFramework::loadSceneModels(filename, &meshes, &diffuseTextureNames);
 
 	for (auto& mesh : meshes)
 	{
@@ -99,7 +99,7 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 	{
 		try
 		{
-			loadMeshTexture(context, renderer, dTextureName.c_str(), &textureImages[i], &textureImageMemorys[i], &textureImageViews[i]);
+			loadMeshTexture(context, renderer, (location + dTextureName).c_str(), &textureImages[i], &textureImageMemorys[i], &textureImageViews[i]);
 		}
 		catch (int e)
 		{
@@ -147,8 +147,6 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 	// Create Pipeline
 	createPipeline();
 	recordCommands();
-
-	updateUBO();
 
 	DEBUG("SCENE3D - Scene Created %s", filename.c_str());
 }

@@ -10,7 +10,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.000000
 d 1.000000
 illum 2
-map_Kd /home/devon/Desktop/projectkoi/v3/app/src/main/assets/meshes/onethousandvoices/OneThousandVoices02_Diffuse.dds
+map_Kd OneThousandVoices02_Diffuse.dds
 
 newmtl 1000VoicesStock
 Ns 198.039216
@@ -21,4 +21,4 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.000000
 d 1.000000
 illum 2
-map_Kd /home/devon/Desktop/projectkoi/v3/app/src/main/assets/meshes/onethousandvoices/OneThousandVoices01_Diffuse.dds
+map_Kd OneThousandVoices01_Diffuse.dds

@@ -28,6 +28,7 @@ class RenderSystem : public System
 		void shutdown(void * data);
 		void loadScene(void * data);
 		void stopScene(void * data);
+		void onKeyPress(void * data);
 		void onWindowFocus(void * data);
 		void onCameraPositionUpdate(void * data);
 		void onCameraDirectionUpdate(void * data);

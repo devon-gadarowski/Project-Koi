@@ -17,6 +17,8 @@ class InputSystem : public System
 	private:
 		void onWindowCreate(void * data);
 
+		void toggleCursor(GLFWwindow * window);
+
 		static void keyCallback(GLFWwindow * window, int key, int scancode, int action, int mods);
 		static void cursorPositionCallback(GLFWwindow * window, double xpos, double ypos);
 		static void mouseButtonCallback(GLFWwindow * window, int button, int action, int mods);

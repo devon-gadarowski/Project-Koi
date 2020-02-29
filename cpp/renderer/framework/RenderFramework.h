@@ -421,7 +421,7 @@ class Scene3D
 		void setupDescriptors();
 		void createPipeline();
 		void recordCommands();
-		void updateUBO();
+		void updateUBO(uint32_t imageIndex);
 		VkCommandBuffer getFrame(uint32_t imageIndex);
 		void draw();
 
@@ -461,6 +461,9 @@ class GUI
 		GUI(Context * context, Renderer * renderer);
 		~GUI();
 
+		void fpsMeter(long elapsedTime);
+		void console();
+
 		void update(long elapsedTime);
 		VkCommandBuffer getFrame(uint32_t imageIndex);
 		void draw();
@@ -475,6 +478,10 @@ class GUI
 
 		std::vector<VkCommandPool> commandPools;
 		std::vector<VkCommandBuffer> commandBuffers;
+
+		uint32_t frameCount;
+		long timeBeforeFPSUpdate;
+		uint32_t FPS;
 };
 
 // GLFWwindow
@@ -547,7 +554,7 @@ void createVkFramebuffer(VkDevice device, const void * pNext, VkFramebufferCreat
 void loadMeshTexture(Context * context, Renderer * renderer, const char * textureName, VkImage * image, VkDeviceMemory * imageMemory, VkImageView * imageView);
 void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler);
 
-void loadSceneModels(std::string filename, std::vector<Mesh> * meshes, std::vector<std::string> * diffuseTextureNames);
+std::string loadSceneModels(std::string filename, std::vector<Mesh> * meshes, std::vector<std::string> * diffuseTextureNames);
 void createMeshBuffers(Context * context, Mesh * mesh);
 
 void createBuffer(Context * context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer * buffer, VkDeviceMemory * bufferMemory);

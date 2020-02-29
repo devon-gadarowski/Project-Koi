@@ -88,8 +88,8 @@ void CameraSystem::update(long elapsedTime)
 
 CameraSystem::CameraSystem()
 {
-	setMessageCallback(KeyPress, (message_method_t) &CameraSystem::startMotion);
-	setMessageCallback(KeyRelease, (message_method_t) &CameraSystem::stopMotion);
+	setMessageCallback(KeyPress, (message_method_t) &CameraSystem::onKeyPress);
+	setMessageCallback(KeyRelease, (message_method_t) &CameraSystem::onKeyRelease);
 	setMessageCallback(SetMouseDelta, (message_method_t) &CameraSystem::setMouseDelta);
 
 	setMessageCallback(SceneLoaded, (message_method_t) &CameraSystem::startRunning);
@@ -114,13 +114,26 @@ void CameraSystem::setMouseDelta(void * data)
 {
 	double * delta = (double *) data;
 
+	if (!running)
+		return;
+
 	mouseDelta[0] += delta[0];
 	mouseDelta[1] += delta[1];
 }
 
-void CameraSystem::startMotion(void * data)
+void CameraSystem::onKeyPress(void * data)
 {
 	long keyCode = reinterpret_cast<long> (data);
+
+	if (keyCode == '`')
+	{
+		running = !running;
+		DEBUG("CAMERA_SYSTEM - Pause key");
+		return;
+	}
+
+	if (!running)
+		return;
 
 	auto action = keyBindings.find(keyCode);
 
@@ -152,7 +165,7 @@ void CameraSystem::startMotion(void * data)
 	};
 }
 
-void CameraSystem::stopMotion(void * data)
+void CameraSystem::onKeyRelease(void * data)
 {
 	long keyCode = reinterpret_cast<long> (data);
 

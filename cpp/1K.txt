@@ -1,3 +1,3 @@
-../assets/meshes/onethousandvoices
+../assets/meshes/onethousandvoices/
 1
 onethousandvoices.obj

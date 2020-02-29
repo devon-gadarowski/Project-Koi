@@ -18,6 +18,19 @@ InputSystem::~InputSystem()
 	DEBUG("INPUT_SYSTEM - Input System Destroyed");
 }
 
+void InputSystem::toggleCursor(GLFWwindow * window)
+{
+	if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);		
+	else
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	if (glfwRawMouseMotionSupported() && glfwGetInputMode(window, GLFW_RAW_MOUSE_MOTION) == GLFW_TRUE)
+		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+	else
+		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+}
+
 void InputSystem::onWindowCreate(void * data)
 {
 	GLFWwindow * window = (GLFWwindow *) data;
@@ -43,6 +56,9 @@ void InputSystem::keyCallback(GLFWwindow * window, int key, int scancode, int ac
 
 	if (action == GLFW_PRESS)
 	{
+		if (key == '`')
+			inputSystem->toggleCursor(window);
+
 		inputSystem->keyCodes[key] = true;
 		inputSystem->msgBus->sendMessage(Message(KeyPress, reinterpret_cast<void *> (key)));
 	}

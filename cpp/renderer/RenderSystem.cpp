@@ -27,7 +27,7 @@ void RenderSystem::update(long elapsedTime)
 
 	std::vector<VkCommandBuffer> commandBuffers(2);
 
-	scene->updateUBO();
+	scene->updateUBO(imageIndex);
 	commandBuffers[0] = scene->getFrame(imageIndex);
 
 	gui->update(elapsedTime);
@@ -46,6 +46,7 @@ RenderSystem::RenderSystem()
 	setMessageCallback(Shutdown, (message_method_t) &RenderSystem::shutdown);
 	setMessageCallback(LoadScene, (message_method_t) &RenderSystem::loadScene);
 	setMessageCallback(SetWindowFocus, (message_method_t) &RenderSystem::onWindowFocus);
+	setMessageCallback(KeyPress, (message_method_t) &RenderSystem::onKeyPress);
 	setMessageCallback(SetCameraPosition, (message_method_t) &RenderSystem::onCameraPositionUpdate);
 	setMessageCallback(SetCameraDirection, (message_method_t) &RenderSystem::onCameraDirectionUpdate);
 }
@@ -123,6 +124,11 @@ void RenderSystem::stopScene(void * data)
 
 	scene = nullptr;
 	msgBus->sendMessage(Message(SceneDestroyed, nullptr));
+}
+
+void RenderSystem::onKeyPress(void * data)
+{
+
 }
 
 void RenderSystem::onWindowFocus(void * data)

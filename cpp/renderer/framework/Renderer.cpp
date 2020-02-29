@@ -5,7 +5,7 @@ using namespace RenderFramework;
 
 uint32_t Renderer::getNextImage()
 {
-	uint32_t imageIndex = frameIndex % length;
+	uint32_t imageIndex;
     vkAcquireNextImageKHR(context->device, swapchain, UINT64_MAX, imageAvailable, VK_NULL_HANDLE, &imageIndex);
 
 	vkWaitForFences(context->device, 1, &fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
@@ -55,8 +55,6 @@ void Renderer::present(uint32_t imageIndex)
 	}
 
 	vkQueuePresentKHR(context->presentQueue.queue, &presentInfo);
-
-	frameIndex++;
 }
 
 Renderer::Renderer(Context * context)

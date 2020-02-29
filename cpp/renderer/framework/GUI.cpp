@@ -7,6 +7,34 @@
 
 using namespace RenderFramework;
 
+void GUI::fpsMeter(long elapsedTime)
+{
+	timeBeforeFPSUpdate -= elapsedTime;
+	if (timeBeforeFPSUpdate < 0)
+	{
+		FPS = frameCount;
+		frameCount = 0;
+		timeBeforeFPSUpdate = 1000;
+	}
+
+    ImVec2 window_pos = ImVec2(10.0f, 10.0f);
+    ImVec2 window_pos_pivot = ImVec2(0.0f, 0.0f);
+    ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
+
+	ImGui::SetNextWindowBgAlpha(0.35f);
+	ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration |ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::Text("FPS: %u", FPS);
+
+    ImGui::End();
+}
+
+void GUI::console()
+{
+	ImGui::Begin("Console");
+    ImGui::Text("This will be a console");
+	ImGui::End();
+}
+
 void GUI::update(long elapsedTime)
 {
 	ImGui_ImplVulkan_NewFrame();
@@ -14,11 +42,12 @@ void GUI::update(long elapsedTime)
 	ImGui::NewFrame();
 
 	//ImGui::ShowDemoWindow();
-    ImGui::Begin("FPS");
-    ImGui::Text("%0.1f", 6000.0 / elapsedTime);
-    ImGui::End();
+	fpsMeter(elapsedTime);
+	console();
 
 	ImGui::Render();
+
+	frameCount++;
 }
 
 VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
@@ -29,28 +58,14 @@ VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
 	info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffers[imageIndex], &info);
 
-	vkCmdPipelineBarrier(
-		commandBuffers[imageIndex],
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		0, nullptr);
-
-	VkClearValue clearColors[3];
-	clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-	clearColors[1].depthStencil = {1.0f, 0};
-	clearColors[2].color = {0.0f, 0.0f, 0.0f, 1.0f};
-
 	VkRenderPassBeginInfo passInfo = {};
 	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	passInfo.renderPass = renderPass;
 	passInfo.framebuffer = framebuffers[imageIndex];
 	passInfo.renderArea.extent.width = renderer->extent.width;
 	passInfo.renderArea.extent.height = renderer->extent.height;
-	passInfo.clearValueCount = 1;
-	passInfo.pClearValues = clearColors;
+	passInfo.clearValueCount = 0;
+	passInfo.pClearValues = nullptr;
 	vkCmdBeginRenderPass(commandBuffers[imageIndex], &passInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[imageIndex]);
@@ -64,8 +79,6 @@ VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
 void GUI::draw()
 {
 	uint32_t imageIndex = renderer->frameIndex % renderer->length;
-
-	//vkQueueWaitIdle(context->graphicsQueue.queue);
 
 	vkWaitForFences(context->device, 1, &renderer->fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
 	vkResetFences(context->device, 1, &renderer->fences[imageIndex]);
@@ -196,6 +209,10 @@ GUI::GUI(Context * context, Renderer * renderer)
 	VkCommandBuffer command_buffer = beginSingleTimeCommands(context);
 	ImGui_ImplVulkan_CreateFontsTexture(command_buffer);
 	endSingleTimeCommands(context, command_buffer);
+
+	frameCount = 0;
+	FPS = 0;
+	timeBeforeFPSUpdate = 1000;
 
 	DEBUG("GUI - GUI Created");
 }
