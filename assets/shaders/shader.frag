@@ -34,9 +34,9 @@ void main()
 
 	// AMBIENT
 	if (inMaterial.ka == true)
-		ambient = vec3(texture(texSampler[0], inTexCoord));
+		ambient = vec3(texture(texSampler[texID++], inTexCoord));
 	else if (inMaterial.kd == true)
-		ambient = vec3(texture(texSampler[0], inTexCoord));
+		ambient = vec3(texture(texSampler[texID], inTexCoord));
 	else
 		ambient = inMaterial.ambient;
 
@@ -45,7 +45,7 @@ void main()
 	vec3 norm = normalize(inNormal);
 	float diffuseStr = clamp(dot(lightDir, norm), 0.0, 1.0);
 	if (inMaterial.kd == true)
-		diffuse = diffuseStr * vec3(texture(texSampler[0], inTexCoord));
+		diffuse = diffuseStr * vec3(texture(texSampler[texID++], inTexCoord));
 	else
 		diffuse = diffuseStr * inMaterial.diffuse;
 
@@ -54,7 +54,7 @@ void main()
 	vec3 reflectDir = reflect(-lightDir, norm);
 	float specularStr = pow(max(dot(normalize(-inPos), reflectDir), 0.0), inMaterial.shininess);
 	if (inMaterial.ks == true)
-		specular = specularStr * vec3(texture(texSampler[0], inTexCoord));
+		specular = specularStr * vec3(texture(texSampler[texID++], inTexCoord));
 	else
 		specular = specularStr * inMaterial.specular;
 
