@@ -143,14 +143,12 @@ void Renderer::createSwapchain()
 
 	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &imageAvailable);
 	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &renderFinished);
-	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &guiFinished);
 }
 
 void Renderer::destroySwapchain()
 {
 	vkDestroySemaphore(context->device, imageAvailable, nullptr);
 	vkDestroySemaphore(context->device, renderFinished, nullptr);
-	vkDestroySemaphore(context->device, guiFinished, nullptr);
 
 	for (int i = 0; i < length; i++)
 	{

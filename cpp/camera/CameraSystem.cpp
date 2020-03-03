@@ -73,10 +73,10 @@ void CameraSystem::update(long elapsedTime)
 		camera.right[1] = 0.0f;
 		camera.right[2] = std::sin(camera.theta + 3.14159 / 2);
 
+		updated = true;
+
 		mouseDelta[0] = 0.0;
 		mouseDelta[1] = 0.0;
-
-		updated = true;
 	}
 
 	if (updated)
@@ -92,7 +92,7 @@ CameraSystem::CameraSystem()
 	setMessageCallback(KeyRelease, (message_method_t) &CameraSystem::onKeyRelease);
 	setMessageCallback(SetMouseDelta, (message_method_t) &CameraSystem::setMouseDelta);
 
-	setMessageCallback(SceneLoaded, (message_method_t) &CameraSystem::startRunning);
+	setMessageCallback(SceneLoaded, (message_method_t) &CameraSystem::onSceneLoad);
 	setMessageCallback(SceneDestroyed, (message_method_t) &CameraSystem::stopRunning);
 
 	keyBindings['W'] = Forward;
@@ -108,6 +108,12 @@ CameraSystem::CameraSystem()
 CameraSystem::~CameraSystem()
 {
 	DEBUG("CAMERA_SYSTEM - Camera System Destroyed");
+}
+
+void CameraSystem::onSceneLoad(void * data)
+{
+	msgBus->sendMessage(Message(SetCameraPosition, camera.position));
+	msgBus->sendMessage(Message(SetCameraDirection, camera.direction));
 }
 
 void CameraSystem::setMouseDelta(void * data)
@@ -127,7 +133,11 @@ void CameraSystem::onKeyPress(void * data)
 
 	if (keyCode == '`')
 	{
-		running = !running;
+		if (!running)
+			startRunning(nullptr);
+		else
+			stopRunning(nullptr);
+
 		DEBUG("CAMERA_SYSTEM - Pause key");
 		return;
 	}
@@ -203,6 +213,9 @@ void CameraSystem::startRunning(void * data)
 {
 	running = true;
 
+	mouseDelta[0] = 0.0;
+	mouseDelta[1] = 0.0;
+
 	msgBus->sendMessage(Message(SetCameraPosition, camera.position));
 	msgBus->sendMessage(Message(SetCameraDirection, camera.direction));
 }
@@ -210,4 +223,10 @@ void CameraSystem::startRunning(void * data)
 void CameraSystem::stopRunning(void * data)
 {
 	running = false;
+
+	mouseDelta[0] = 0.0;
+	mouseDelta[1] = 0.0;
+
+	msgBus->sendMessage(Message(SetCameraPosition, camera.position));
+	msgBus->sendMessage(Message(SetCameraDirection, camera.direction));
 }

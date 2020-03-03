@@ -1,46 +1,70 @@
 #version 450
 
-layout(binding = 1) uniform sampler2D texSampler[1024];
+layout(set = 1, binding = 0) uniform Material
+{
+	bool ka;
+	bool kd;
+	bool ks;
+	bool norm;
 
-layout(location = 0) in vec3 inPos;
-layout(location = 1) in vec3 inColor;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	vec3 emission;
+	int shininess;
+	float opacity;
+}inMaterial;
+
+layout(set = 1, binding = 1) uniform sampler2D texSampler[4];
+
+layout(location = 0) in vec3 inLightPos;
+layout(location = 1) in vec3 inPos;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec3 inNormal;
-layout(location = 4) in float inOpacity;
-layout(location = 5) flat in uint inTexID;
-layout(location = 6) in vec3 inAmbient;
-layout(location = 7) in vec3 inDiffuse;
-layout(location = 8) in vec3 inSpecular;
-layout(location = 9) in vec3 inLightPos;
 
 layout(location = 0) out vec4 outColor;
 
 void main()
 {
-	vec3 lightColor = vec3(1.0, 1.0, 1.0);
-	vec4 objectColor = texture(texSampler[inTexID], inTexCoord);
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+
+	int texID = 0;
 
 	// AMBIENT
-	float ambientIntensity = 0.1;
-	vec3 ambient = ambientIntensity * lightColor;
+	if (inMaterial.ka == true)
+		ambient = vec3(texture(texSampler[0], inTexCoord));
+	else if (inMaterial.kd == true)
+		ambient = vec3(texture(texSampler[0], inTexCoord));
+	else
+		ambient = inMaterial.ambient;
 
 	// DIFFUSE
 	vec3 lightDir = normalize(inLightPos - inPos);
 	vec3 norm = normalize(inNormal);
-	vec3 diffuse = clamp(dot(lightDir, norm), 0.0, 1.0) * lightColor;
+	float diffuseStr = clamp(dot(lightDir, norm), 0.0, 1.0);
+	if (inMaterial.kd == true)
+		diffuse = diffuseStr * vec3(texture(texSampler[0], inTexCoord));
+	else
+		diffuse = diffuseStr * inMaterial.diffuse;
 
 	// SPECULAR
 	float specularIntensity = 0.8;
 	vec3 reflectDir = reflect(-lightDir, norm);
-	vec3 specular = pow(max(dot(normalize(-inPos), reflectDir), 0.0), 32) * specularIntensity * lightColor;
+	float specularStr = pow(max(dot(normalize(-inPos), reflectDir), 0.0), inMaterial.shininess);
+	if (inMaterial.ks == true)
+		specular = specularStr * vec3(texture(texSampler[0], inTexCoord));
+	else
+		specular = specularStr * inMaterial.specular;
 
 	// OPACITY
-	vec4 opacity = vec4(1.0, 1.0, 1.0, inOpacity);
+	float opacity = inMaterial.opacity;
 
 	// FOG
-	vec3 fogColor = vec3(1.0, 1.0, 1.0);
-	float fogFactor = clamp((sqrt(dot(inPos, inPos)) - 40.0) / 10.0, 0.0, 1.0);
-	vec4 fog = vec4(fogFactor * fogColor, 1.0);
+	//vec3 fogColor = vec3(1.0, 1.0, 1.0);
+	//float fogFactor = clamp((sqrt(dot(inPos, inPos)) - 40.0) / 10.0, 0.0, 1.0);
+	//vec4 fog = vec4(fogFactor * fogColor, 1.0);
 
-	outColor = vec4(ambient + diffuse + specular, opacity) * objectColor + fog;
+	outColor = vec4(ambient + diffuse + specular, opacity);// + fog;
 }

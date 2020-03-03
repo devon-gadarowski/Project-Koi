@@ -14,6 +14,8 @@
 
 namespace RenderFramework
 {
+
+#ifndef ANDROID
 void createBorderlessWindow(GLFWwindow ** window )
 {
 	glfwInit();
@@ -60,12 +62,6 @@ void destroyVkSurfaceKHR(VkInstance instance, VkSurfaceKHR * surface)
 	vkDestroySurfaceKHR(instance, *surface, nullptr);
 }
 
-// Returns a handle to a VkInstance object with default parameters
-void createInstance(VkInstance * instance)
-{
-	createInstance(nullptr, 0, nullptr, 0, instance);
-}
-
 // Returns a handle to a VkInstance object with GLFW window support
 void createInstanceGLFW(std::vector<const char *> layers, std::vector<const char *> extensions, VkInstance * instance)
 {
@@ -78,6 +74,12 @@ void createInstanceGLFW(std::vector<const char *> layers, std::vector<const char
 		extensions.push_back(instanceExtensions[i]);
 
 	createInstance(layers, extensions, instance);
+}
+#endif
+// Returns a handle to a VkInstance object with default parameters
+void createInstance(VkInstance * instance)
+{
+	createInstance(nullptr, 0, nullptr, 0, instance);
 }
 
 // Returns a handle to a VkInstance object
@@ -102,8 +104,8 @@ void createInstance(const char ** layers, uint32_t layerCount, const char ** ext
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.flags = 0;
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.enabledLayerCount = validationLayers.size();
-	createInfo.ppEnabledLayerNames = validationLayers.data();
+	createInfo.enabledLayerCount = layerCount;
+	createInfo.ppEnabledLayerNames = layers;
 	createInfo.enabledExtensionCount = extensionCount;
 	createInfo.ppEnabledExtensionNames = extensions;
 
@@ -1496,27 +1498,21 @@ void copyBufferToImage(Context * context, VkBuffer buffer, VkImage image, uint32
 	endSingleTimeCommands(context, commandBuffer);
 }
 
-void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * vertices,
-             std::vector<uint32_t> * indices, std::vector<std::string> * diffuseTextureNames)
+void loadOBJ(std::string filename, std::string location, Model * m)
 {
-	int totalVerts, face;
-
 	std::string err, warn;
 
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
 
-	tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, (location + "/" + filename).c_str(), location.c_str(), true, true);
-
-	std::unordered_map<Vertex, uint32_t> uniqueVertices;
-
-	// TODO: Cleanup TexID and investigate texCoords errors
-	// Some texID values are garbage
+	tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, (location + filename).c_str(), location.c_str(), true, true);
 
 	for (auto& shape : shapes)
 	{
+		Mesh mesh = {};
 		size_t index_offset = 0;
+		std::unordered_map<Vertex, uint32_t> uniqueVertices;
 		for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++)
 		{
 			int fv = shape.mesh.num_face_vertices[f];
@@ -1532,36 +1528,49 @@ void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * v
 					attrib.vertices[3 * index.vertex_index + 2]
 				};
 
-				vertex.tex = {
-					attrib.texcoords[2 * index.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-				};
-
 				vertex.normal = {
 					attrib.normals[3 * index.normal_index + 0],
 					attrib.normals[3 * index.normal_index + 1],
 					attrib.normals[3 * index.normal_index + 2]
 				};
 
-				vertex.color = {1.0f, 1.0f, 1.0f};
+				vertex.tex = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
 
-				vertex.texID = diffuseTextureNames->size() + shape.mesh.material_ids[f];
+				mesh.materialID = shape.mesh.material_ids[f];
 
 				if (uniqueVertices.count(vertex) == 0)
 				{
-					uniqueVertices[vertex] = static_cast<uint32_t>(vertices->size());
-					vertices->push_back(vertex);
+					uniqueVertices[vertex] = static_cast<uint32_t>(mesh.vertices.size());
+					mesh.vertices.push_back(vertex);
 				}
 
-				indices->push_back(uniqueVertices[vertex]);
+				mesh.indices.push_back(uniqueVertices[vertex]);
 			}
 			index_offset += fv;
 		}
+		m->shapes.push_back(mesh);
 	}
 
 	for (auto& material : materials)
 	{
-		diffuseTextureNames->push_back(material.diffuse_texname);
+		Material mat;
+
+		mat.ambientTexture.name = (material.ambient_texname == "") ? "" : location + material.ambient_texname;		
+		mat.diffuseTexture.name = (material.diffuse_texname == "") ? "" : location + material.diffuse_texname;
+		mat.specularTexture.name = (material.specular_texname == "") ? "" : location + material.specular_texname;
+		mat.normalTexture.name = (material.normal_texname == "") ? "" : location + material.normal_texname;
+
+		mat.ambient = {material.ambient[0], material.ambient[1], material.ambient[2]};
+		mat.diffuse = {material.diffuse[0], material.diffuse[1], material.diffuse[2]};
+		mat.specular = {material.specular[0], material.specular[1], material.specular[2]};
+		mat.emission = {material.emission[0], material.emission[1], material.emission[2]};
+		mat.shininess = material.shininess;
+		mat.opacity = material.dissolve;
+
+		m->materials.push_back(mat);
 	}
 
 	if (err.length() > 1)
@@ -1575,50 +1584,98 @@ void loadOBJ(std::string filename, std::string location, std::vector<Vertex> * v
 	}
 }
 
-std::string loadSceneModels(std::string filename, std::vector<Mesh> * meshes, std::vector<std::string> * diffuseTextureNames)
+void loadSceneModels(std::string filename, std::vector<Model> * models)
 {
-	std::ifstream shoppingList(filename);
+	json input;
+	std::ifstream i(filename);
 
-	if (!shoppingList.is_open())
+	if (!i.is_open())
 	{
-		throw 117;
-		//shoppingList.exceptions(shoppingList.failbit);
-		//return;
+		PANIC("Failed to open %s", filename.c_str());
+		throw;
 	}
 
-	std::string location;
+	i >> input;
+	i.close();
 
-	shoppingList >> location;
-
-	std::string err, warn;
-
-	while (true)
+	for (auto it = input.begin(); it != input.end(); it++)
 	{
-		int maxCount = 0;
-		std::string objectname;
+		std::string name = it.key();
+		std::string location = "";
+		std::string model = "";
+		uint32_t instanceCount = 0;
+		std::vector<Vec3> positions;
 
-		shoppingList >> maxCount;
-		shoppingList >> objectname;
-
-		if (shoppingList.eof())
-			break;
-
-		meshes->emplace_back();
-
-		meshes->back().name = objectname;
-		meshes->back().instances.resize(maxCount);
-
-		for (auto& instance : meshes->back().instances)
+		json value = it.value();
+		
+		for (auto it2 = value.begin(); it2 != value.end(); it2++)
 		{
-			instance.material.textureIndex = diffuseTextureNames->size();
+			if (it2.key() == "instance_count")
+			{
+				instanceCount = it2.value();
+			}
+			else if (it2.key() == "location")
+			{
+				location = it2.value();
+			}
+			else if (it2.key() == "model")
+			{
+				model = it2.value();
+			}
+			else if (it2.key() == "positions")
+			{
+				for (auto it3 = it2.value().begin(); it3 != it2.value().end(); it3++)
+				{
+					Vec3 pos = {it3.value()[0], it3.value()[1], it3.value()[2]};
+					positions.push_back(pos);
+				}
+			}
+			else
+			{
+				WARN("Unknown input key %s in %s, skipping...", it2.key().c_str(), filename.c_str());
+			}
 		}
 
-		loadOBJ(objectname, location, &meshes->back().vertices, &meshes->back().indices, diffuseTextureNames);
+		if (name == "" || model == "" || instanceCount == 0)
+			continue;
+
+		while (positions.size() < instanceCount)
+			positions.push_back({0, 0, 0});
+
+		positions.resize(instanceCount);
+
+		INFO("%s", name.c_str());
+		INFO("%s", location.c_str());
+		INFO("%s", model.c_str());
+		INFO("%u", instanceCount);
+
+		for (auto& pos : positions)
+		{
+			INFO("%f %f %f", pos.x, pos.y, pos.z);
+		}
+
+		Model m;
+		m.name = name.c_str();
+		m.shapes = {};
+		m.materials = {};
+		m.instances = {};
+		
+		loadOBJ(model, ".." + location, &m);
+
+		m.instances.resize(positions.size());
+		for (size_t i = 0; i < m.instances.size(); i++)
+		{
+			Mat4 bone = {};
+			bone.a = {1.0, 0.0, 0.0, 0.0};
+			bone.b = {0.0, 1.0, 0.0, 0.0};
+			bone.c = {0.0, 0.0, 1.0, 0.0};
+			bone.d = {positions[i].x, positions[i].y, positions[i].z, 1.0};
+
+			m.instances[i].transform = bone;
+		}
+
+		models->push_back(m);
 	}
-
-	shoppingList.close();
-
-	return location;
 }
 
 void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler)
@@ -1688,24 +1745,26 @@ int getFileExtension(const char * filename)
 	return other;
 }
 
-void loadMeshTexture(Context * context, Renderer * renderer, const char * textureName,
-                     VkImage * image, VkDeviceMemory * imageMemory, VkImageView * imageView)
+bool loadMeshTexture(Context * context, Renderer * renderer, Texture * texture)
 {
+	if (texture == nullptr || texture->name == "")
+		return false;
+
 	unsigned char * pixels = nullptr;
 	dds_info imageInfo;
 	int width, height, channels;
 	VkDeviceSize imageSize;
 	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 
-	if (getFileExtension(textureName) == 0)
+	if (getFileExtension(texture->name.c_str()) == 0)
 	{
 		static const dds_u32 supfmt[] = { DDS_FMT_R8G8B8A8, DDS_FMT_B8G8R8A8, DDS_FMT_B8G8R8X8, DDS_FMT_DXT1, DDS_FMT_DXT3, DDS_FMT_DXT5, 0 };
-		int result = dds_load_from_file(textureName, &imageInfo, supfmt);
+		int result = dds_load_from_file(texture->name.c_str(), &imageInfo, supfmt);
 
 		if (result != DDS_SUCCESS)
 		{
-			PANIC("RENDER_FRAMEWORK - Failed to load texture %s %d", textureName, result);
-			throw 117;
+			PANIC("RENDER_FRAMEWORK - Failed to load texture %s %d", texture->name.c_str(), result);
+			return false;
 		}
 
 		width = imageInfo.image.width;
@@ -1727,14 +1786,14 @@ void loadMeshTexture(Context * context, Renderer * renderer, const char * textur
 	}
 	else
 	{
-		pixels = stbi_load(textureName, &width, &height, &channels, STBI_rgb_alpha);
+		pixels = stbi_load(texture->name.c_str(), &width, &height, &channels, STBI_rgb_alpha);
 		imageSize = width * height * 4;
 	}
 
 	if (!pixels)
 	{
-		PANIC("RENDER_FRAMEWORK - Failed to load texture %s", textureName);
-		throw 117;
+		PANIC("RENDER_FRAMEWORK - Failed to load texture %s", texture->name.c_str());
+		return false;
 	}
 	VkBuffer stagingBuffer;
 	VkDeviceMemory stagingBufferMemory;
@@ -1755,18 +1814,22 @@ void loadMeshTexture(Context * context, Renderer * renderer, const char * textur
 
 	createVkImage(context, VK_IMAGE_TYPE_2D, format, e, 1, 1, VK_SAMPLE_COUNT_1_BIT,
 	            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-	            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, imageMemory);
+	            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &texture->image, &texture->memory);
 
-	transitionImageLayout(context, *image, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+	transitionImageLayout(context, texture->image, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
 
-	copyBufferToImage(context, stagingBuffer, *image, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1);
+	copyBufferToImage(context, stagingBuffer, texture->image, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1);
 
-	transitionImageLayout(context, *image, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
+	transitionImageLayout(context, texture->image, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
 
-	createVkImageView(context, *image, format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, imageView);
+	createVkImageView(context, texture->image, format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, &texture->imageView);
 
 	vkDestroyBuffer(context->device, stagingBuffer, nullptr);
 	vkFreeMemory(context->device, stagingBufferMemory, nullptr);
+
+	texture->format = format;
+
+	return true;
 }
 
 void createVertexBuffer(Context * context, std::vector<Vertex>& vertices, VkBuffer * vertexBuffer,
@@ -1851,7 +1914,6 @@ void createMeshBuffers(Context * context, Mesh * mesh)
 {
 	createVertexBuffer(context, mesh->vertices, &mesh->vertexBuffer, &mesh->vertexMemory, &mesh->vertexBufferSize);
 	createIndexBuffer(context, mesh->indices, &mesh->indexBuffer, &mesh->indexMemory, &mesh->indexBufferSize);
-	createInstanceBuffer(context, mesh->instances, &mesh->instanceBuffer, &mesh->instanceMemory, &mesh->instanceBufferSize);
 }
 
 void createShaderModule(Context * context, std::string filename, VkShaderModule * shaderModule)

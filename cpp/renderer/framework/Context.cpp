@@ -5,11 +5,17 @@ using namespace RenderFramework;
 
 Context::Context()
 {
+#ifndef ANDROID
 	createBorderlessWindow(&window);
 	glfwSetWindowUserPointer(window, this);
-
 	createInstanceGLFW(validationLayers, instanceExtensions, &instance);
 	createVkSurfaceKHR(instance, window, &surface);
+#else
+	// TODO: Create OVR Instance
+	std::vector<const char *> extensions();
+
+	createInstance(nullptr, 0, nullptr, 0, VkInstance * instance);
+#endif
 	chooseVkPhysicalDevice(instance, &physicalDevice);
 	chooseQueues();
 	uint32_t queueIndices [] = {graphicsQueue.index, transferQueue.index, presentQueue.index};

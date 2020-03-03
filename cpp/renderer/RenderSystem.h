@@ -14,7 +14,6 @@ class RenderSystem : public System
 		~RenderSystem();
 
 	private:
-		GLFWwindow * window;
 		RenderFramework::Context * context;
 		RenderFramework::Renderer * renderer;
 		RenderFramework::Scene3D * scene;

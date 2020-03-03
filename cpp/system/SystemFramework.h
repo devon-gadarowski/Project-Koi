@@ -35,7 +35,8 @@ enum MessageType
 	MouseButtonRelease,
 	SetWindowFocus,
 	SetCameraPosition,
-	SetCameraDirection
+	SetCameraDirection,
+	ProcessCommand
 };
 
 class Message

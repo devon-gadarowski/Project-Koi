@@ -3,7 +3,6 @@
 #define CONSOLE_SYSTEM_H
 
 #include <SystemFramework.h>
-//#include <ConsoleFramework.h>
 
 #include <thread>
 
@@ -33,7 +32,7 @@ class ConsoleSystem : public System
 
 		void registerCommands();
 		void readConsoleInputs();
-		void processCommand(std::string command, MessageBus * msgBus);
+		void processCommand(void * data);
 
 		static std::vector<std::string> parseCommandArgs(std::string);
 		static long hashCode(std::string);

@@ -9,6 +9,3 @@
 #include <CameraSystem.h>
 
 #endif
-
-// TODO List
-// Input and Camera Systems

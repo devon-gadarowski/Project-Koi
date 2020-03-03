@@ -7,7 +7,7 @@ CAMERA_INCLUDE = -Icamera
 
 VULKAN_INCLUDE = -I$(VULKAN_SDK)/include
 IMGUI_INCLUDE = -I3rd_party/dear_imgui -I3rd_party/dear_imgui/examples
-EXTRA_INCLUDE = -I3rd_party
+EXTRA_INCLUDE = -I3rd_party -I3rd_party/nlohmann
 
 INCLUDES = -I. $(SYSTEM_INCLUDE) $(CONSOLE_INCLUDE) $(RENDER_INCLUDE) $(INPUT_INCLUDE) $(CAMERA_INCLUDE) $(VULKAN_INCLUDE) $(IMGUI_INCLUDE) $(EXTRA_INCLUDE)
 

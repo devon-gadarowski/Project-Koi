@@ -13,10 +13,12 @@ void ConsoleSystem::update(long elapsedTime)
 
 ConsoleSystem::ConsoleSystem()
 {
-	DEBUG("CONSOLE_SYSTEM - Console created");
-	setMessageCallback(SystemRegistered, (message_method_t) &ConsoleSystem::start);
+	DEBUG("CONSOLE_SYSTEM - ConsoleSystem created");
+	//setMessageCallback(SystemRegistered, (message_method_t) &ConsoleSystem::start);
 	setMessageCallback(ConsolePause, (message_method_t) &ConsoleSystem::pause);
 	setMessageCallback(ConsoleResume, (message_method_t) &ConsoleSystem::resume);
+
+	setMessageCallback(ProcessCommand, (message_method_t) &ConsoleSystem::processCommand);
 
 	registerCommands();
 }
@@ -85,7 +87,7 @@ void ConsoleSystem::readConsoleInputs()
 	{
 		getline(std::cin, command);
 
-		processCommand(command, msgBus);
+		processCommand(&command);
 
 		consolePause = true;
 		msgBus->sendMessage(Message(ConsoleResume));
@@ -97,8 +99,10 @@ void ConsoleSystem::readConsoleInputs()
 	}
 }
 
-void ConsoleSystem::processCommand(std::string command, MessageBus * msgBus)
+void ConsoleSystem::processCommand(void * data)
 {
+	std::string command = *((std::string *) data);
+
 	if (command.length() == 0)
 		return;
 
@@ -177,5 +181,5 @@ void ConsoleSystem::loadScene(std::vector<std::string> args)
 
 	args[1].append(".txt");
 
-	msgBus->sendMessage(Message(LoadScene, &args[1]));
+	msgBus->sendMessageNow(Message(LoadScene, &args[1]));
 }

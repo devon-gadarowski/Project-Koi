@@ -7,6 +7,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 #else
 
 #include <android_native_app_glue.h>
@@ -26,6 +30,9 @@
 #include <tiny_obj_loader.h>
 #include <stb_image.h>
 
+#include <json.hpp>
+using json = nlohmann::json;
+
 #include <Log.h>
 
 #define APPLICATION_NAME "Project Koi"
@@ -36,6 +43,8 @@
 #define SAMPLE_COUNT VK_SAMPLE_COUNT_4_BIT
 #define MIP_LEVELS 1
 #define MULTIVIEW 0
+
+#include <SystemFramework.h>
 
 struct Vec4
 {
@@ -100,10 +109,8 @@ struct Mat4
 struct Vertex
 {
 	Vec3 position;
-	Vec3 color;
-	Vec2 tex;
 	Vec3 normal;
-	uint32_t texID;
+	Vec2 tex;
 
 	static void getAttributeDescriptions(uint32_t binding, std::vector<VkVertexInputAttributeDescription> * attribDesc)
 	{
@@ -117,45 +124,60 @@ struct Vertex
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
 		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Vertex, color);
+		attribDesc->back().offset = offsetof(Vertex, normal);
 
 		attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
 		attribDesc->back().format = VK_FORMAT_R32G32_SFLOAT;
 		attribDesc->back().offset = offsetof(Vertex, tex);
-
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Vertex, normal);
-
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32_UINT;
-		attribDesc->back().offset = offsetof(Vertex, texID);
 	}
 
 	bool operator == (const Vertex& other) const
 	{
-		return position == other.position && color == other.color && tex == other.tex && normal == other.normal;
+		return position == other.position && tex == other.tex && normal == other.normal;
 	}
+};
+
+struct Texture
+{
+	std::string name = "";
+	VkImage image;
+	VkDeviceMemory memory;
+	VkImageView imageView;
+
+	VkFormat format;
 };
 
 struct Material
 {
-	uint32_t textureIndex = 0;
+	Texture ambientTexture;
+	Texture diffuseTexture;
+	Texture specularTexture;
+	Texture normalTexture;
+
+	VkBuffer buffer;
+	VkDeviceMemory bufferMemory;
+
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout descriptorSetLayout;
+	VkDescriptorSet descriptorSet;
+
+	bool ka = true;
+	bool kd = true;
+	bool ks = true;
+	bool norm = true;
+
 	Vec3 ambient;
 	Vec3 diffuse;
 	Vec3 specular;
+	Vec3 emission;
+	int32_t shininess;
+	float opacity;
 };
 
 struct Instance
 {
-	float opacity = 1.0f;
-	Material material;
 	Mat4 transform = {{1.0f, 0.0f, 0.0f, 0.0f},
 	                  {0.0f, 1.0f, 0.0f, 0.0f},
 	                  {0.0f, 0.0f, 1.0f, 0.0f},
@@ -163,36 +185,6 @@ struct Instance
 
 	static void getAttributeDescriptions(uint32_t binding, std::vector<VkVertexInputAttributeDescription> * attribDesc)
 	{
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32_SFLOAT;
-		attribDesc->back().offset = offsetof(Instance, opacity);
-
-		/*attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32_UINT;
-		attribDesc->back().offset = offsetof(Instance, material.textureIndex);*/
-
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Instance, material.ambient);
-
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Instance, material.diffuse);
-
-		attribDesc->emplace_back();
-		attribDesc->back().location = attribDesc->size() - 1;
-		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Instance, material.specular);
-
 		attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
@@ -221,11 +213,9 @@ struct Instance
 
 struct Mesh
 {
-	std::string name;
-
+	uint32_t materialID;
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
-	std::vector<Instance> instances;
 
 	VkDeviceSize vertexBufferSize;
 	VkBuffer vertexBuffer;
@@ -234,6 +224,15 @@ struct Mesh
 	VkDeviceSize indexBufferSize;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexMemory;
+};
+
+struct Model
+{
+	std::string name;
+
+	std::vector<Mesh> shapes;
+	std::vector<Material> materials;
+	std::vector<Instance> instances;
 
 	VkDeviceSize instanceBufferSize;
 	VkBuffer instanceBuffer;
@@ -300,7 +299,6 @@ namespace std
 			size_t seed = 0;
 			hash<Vec3> hasher;
 			hashy(seed, hasher(vertex.position));
-			hashy(seed, hasher(vertex.color));
 			hashy(seed, hasher((Vec3) vertex.tex));
 			hashy(seed, hasher((Vec3) vertex.normal));
 			return seed;
@@ -345,10 +343,10 @@ class Context
 		~Context();
 
 		void chooseQueues();
-
+#ifndef ANDROID
 		GLFWwindow * window;
 		VkSurfaceKHR surface;
-
+#endif
 		VkInstance instance;
 		VkPhysicalDevice physicalDevice;
 		VkDevice device;
@@ -393,7 +391,7 @@ class Renderer
 
 		VkSemaphore imageAvailable;
 		VkSemaphore renderFinished;
-		VkSemaphore guiFinished;
+		//VkSemaphore guiFinished;
 
 		VkFormat colorFormat;
 		VkColorSpaceKHR colorSpace;
@@ -428,12 +426,9 @@ class Scene3D
 		UBO ubo;
 		Camera camera;
 
-		VkSampler textureSampler;
-		std::vector<VkImage> textureImages;
-		std::vector<VkDeviceMemory> textureImageMemorys;
-		std::vector<VkImageView> textureImageViews;
+		std::vector<Model> models;
 
-		std::vector<Mesh> meshes;
+		VkSampler textureSampler;
 
 		std::vector<VkCommandBuffer> commandBuffers;
 
@@ -458,11 +453,13 @@ class Scene3D
 class GUI
 {
 	public:
-		GUI(Context * context, Renderer * renderer);
+		GUI(Context * context, Renderer * renderer, MessageBus * msgBus);
 		~GUI();
 
 		void fpsMeter(long elapsedTime);
+
 		void console();
+		int onConsoleUpdate(ImGuiInputTextCallbackData * data);
 
 		void update(long elapsedTime);
 		VkCommandBuffer getFrame(uint32_t imageIndex);
@@ -470,6 +467,7 @@ class GUI
 
 		Context * context;
 		Renderer * renderer;
+		MessageBus * msgBus;
 
 		VkDescriptorPool descriptorPool;
 		VkRenderPass renderPass;
@@ -482,17 +480,23 @@ class GUI
 		uint32_t frameCount;
 		long timeBeforeFPSUpdate;
 		uint32_t FPS;
+
+		char buffer[30];
+		std::vector<std::string> history;
+		uint32_t historyIndex;
 };
 
+#ifndef ANDROID
 // GLFWwindow
 void createBorderlessWindow(GLFWwindow ** window);
 void destroyWindow(GLFWwindow ** window);
 void createVkSurfaceKHR(VkInstance instance, GLFWwindow * window, VkSurfaceKHR * surface);
 void destroyVkSurfaceKHR(VkInstance instance, VkSurfaceKHR * surface);
+void createInstanceGLFW(std::vector<const char *> layers, std::vector<const char *> extensions, VkInstance * instance);
+#endif
 
 // VkInstance
 void createInstance(VkInstance * instance);
-void createInstanceGLFW(std::vector<const char *> layers, std::vector<const char *> extensions, VkInstance * instance);
 void createInstance(std::vector<const char *> layers, std::vector<const char *> extensions, VkInstance * instance);
 void createInstance(const char ** layers, uint32_t layerCount, const char ** extensions, uint32_t extensionCount, VkInstance * instance);
 void destroyInstance(VkInstance * instance);
@@ -551,13 +555,15 @@ void createVkImageView(VkPhysicalDevice physicalDevice, VkDevice device, const v
 
 void createVkFramebuffer(VkDevice device, const void * pNext, VkFramebufferCreateFlags flags, VkRenderPass renderPass, VkImageView colorImageView, VkImageView depthImageView, VkImageView swapchainImageView, uint32_t width, uint32_t height, uint32_t layers, VkFramebuffer * framebuffer);
 
-void loadMeshTexture(Context * context, Renderer * renderer, const char * textureName, VkImage * image, VkDeviceMemory * imageMemory, VkImageView * imageView);
+bool loadMeshTexture(Context * context, Renderer * renderer, Texture * texture);
 void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler);
 
-std::string loadSceneModels(std::string filename, std::vector<Mesh> * meshes, std::vector<std::string> * diffuseTextureNames);
+void loadSceneModels(std::string filename, std::vector<Model> * models);
 void createMeshBuffers(Context * context, Mesh * mesh);
 
 void createBuffer(Context * context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer * buffer, VkDeviceMemory * bufferMemory);
+
+void createInstanceBuffer(Context * context, std::vector<Instance>& instances, VkBuffer * instanceBuffer, VkDeviceMemory * instanceMemory, VkDeviceSize * instanceBufferSize);
 
 VkDescriptorSetLayoutBinding getDescriptorSetLayoutBinding(uint32_t binding, VkDescriptorType type, uint32_t descriptorCount, VkShaderStageFlags stageFlags, const VkSampler * pImmutableSamplers);
 void createVkDescriptorPool(VkDevice device, std::vector<VkDescriptorSetLayoutBinding>& bindings, uint32_t maxSets, VkDescriptorPool * descriptorPool);

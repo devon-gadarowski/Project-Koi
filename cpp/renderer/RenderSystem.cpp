@@ -8,30 +8,34 @@ void RenderSystem::update(long elapsedTime)
 {
 	if (!initialized)
 	{
-		return;
+		initialize(nullptr);;
 	}
 
 	glfwPollEvents();
-
 	if (glfwWindowShouldClose(context->window))
 	{
 		msgBus->sendMessageNow(Message(Shutdown));
 	}
 
-	if (!sceneLoaded || paused)
+	if (paused)
+		return;
+
+	if (!sceneLoaded)
 	{
+		std::string defaultScene("1k.json");
+		loadScene(&defaultScene);
 		return;
 	}
 
 	uint32_t imageIndex = renderer->getNextImage();
 
-	std::vector<VkCommandBuffer> commandBuffers(2);
+	std::vector<VkCommandBuffer> commandBuffers;
 
 	scene->updateUBO(imageIndex);
-	commandBuffers[0] = scene->getFrame(imageIndex);
+	commandBuffers.push_back(scene->getFrame(imageIndex));
 
 	gui->update(elapsedTime);
-	commandBuffers[1] = gui->getFrame(imageIndex);
+	commandBuffers.push_back(gui->getFrame(imageIndex));
 
 	renderer->render(imageIndex, commandBuffers);
 	renderer->present(imageIndex);
@@ -64,17 +68,17 @@ void RenderSystem::initialize(void * data)
 		return;
 
 	context = new RenderFramework::Context();
+	msgBus->sendMessageNow(Message(GLFWwindowCreated, context->window));
+
 	renderer = new RenderFramework::Renderer(context);
-
-	gui = new RenderFramework::GUI(context, renderer);
-
-	msgBus->sendMessage(Message(GLFWwindowCreated, context->window));
+	gui = new RenderFramework::GUI(context, renderer, msgBus);
 
 	initialized = true;
 }
 
 void RenderSystem::shutdown(void * data)
 {
+	paused = true;
 
 	stopScene(nullptr);
 
@@ -102,7 +106,9 @@ void RenderSystem::loadScene(void * data)
 
 	try
 	{
-		scene = new RenderFramework::Scene3D(context, renderer, *((std::string *) data));
+		std::string sceneName = *((std::string *) data);
+
+		scene = new RenderFramework::Scene3D(context, renderer, sceneName);
 		sceneLoaded = true;
 
 		msgBus->sendMessage(Message(SceneLoaded, scene));
@@ -110,7 +116,7 @@ void RenderSystem::loadScene(void * data)
 	catch (int e)
 	{
 		WARN("RENDER_SYSTEM - Failed to load scence %s", ((std::string *) data)->c_str());
-		shutdown(nullptr);
+		sceneLoaded = false;
 	}
 }
 

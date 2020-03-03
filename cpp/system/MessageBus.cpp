@@ -40,14 +40,14 @@ void MessageBus::update()
 	long elapsedTime = value.count() - lastUpdateTime;
 	lastUpdateTime = value.count();
 
-	for (auto& system : registeredSystems)
-		system->update(elapsedTime);
-
 	while (!(msgQueue.empty()))
 	{
 		sendMessageNow(msgQueue.front());
 		msgQueue.pop();
 	}
+
+	for (auto& system : registeredSystems)
+		system->update(elapsedTime);
 }
 
 void MessageBus::registerSystem(System * s)

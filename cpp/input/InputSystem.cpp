@@ -29,6 +29,8 @@ void InputSystem::toggleCursor(GLFWwindow * window)
 		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
 	else
 		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+	glfwGetCursorPos(window, &mousePosition[0], &mousePosition[1]);
 }
 
 void InputSystem::onWindowCreate(void * data)
@@ -48,6 +50,8 @@ void InputSystem::onWindowCreate(void * data)
 	glfwSetMouseButtonCallback(window, &InputSystem::mouseButtonCallback);
 
 	glfwSetWindowFocusCallback(window, &InputSystem::windowFocusCallback);
+
+	toggleCursor(window);
 }
 
 void InputSystem::keyCallback(GLFWwindow * window, int key, int scancode, int action, int mods)
@@ -69,22 +73,21 @@ void InputSystem::keyCallback(GLFWwindow * window, int key, int scancode, int ac
 	}
 }
 
-void InputSystem::cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
+void InputSystem::cursorPositionCallback(GLFWwindow * window, double xpos, double ypos)
 {
-	if (glfwGetWindowAttrib(window, GLFW_FOCUSED) != GLFW_TRUE)
-		return;
-
 	InputSystem * inputSystem = (InputSystem *) glfwGetWindowUserPointer(window);
 
 	inputSystem->mouseDelta[0] = xpos - inputSystem->mousePosition[0];
 	inputSystem->mouseDelta[1] = ypos - inputSystem->mousePosition[1];
 
-	inputSystem->msgBus->sendMessageNow(Message(SetMouseDelta, inputSystem->mouseDelta));
+	if (glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE && glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+		inputSystem->msgBus->sendMessageNow(Message(SetMouseDelta, inputSystem->mouseDelta));
 
 	inputSystem->mousePosition[0] = xpos;
 	inputSystem->mousePosition[1] = ypos;
 
-	inputSystem->msgBus->sendMessageNow(Message(SetMouseCursor, inputSystem->mousePosition));
+	if (glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE)
+		inputSystem->msgBus->sendMessageNow(Message(SetMouseCursor, inputSystem->mousePosition));
 }
 
 void InputSystem::mouseButtonCallback(GLFWwindow * window, int button, int action, int mods)

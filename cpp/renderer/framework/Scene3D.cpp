@@ -41,34 +41,6 @@ VkCommandBuffer Scene3D::getFrame(uint32_t imageIndex)
 	return commandBuffers[imageIndex];
 }
 
-void Scene3D::draw()
-{
-	uint32_t imageIndex = renderer->frameIndex % renderer->length;
-
-    vkAcquireNextImageKHR(context->device, renderer->swapchain, UINT64_MAX, renderer->imageAvailable, VK_NULL_HANDLE, &imageIndex);
-
-	vkWaitForFences(context->device, 1, &renderer->fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
-	vkResetFences(context->device, 1, &renderer->fences[imageIndex]);
-
-	VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &renderer->imageAvailable;
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderer->renderFinished;
-
-	VkResult result = vkQueueSubmit(context->graphicsQueue.queue, 1, &submitInfo, renderer->fences[imageIndex]);
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDERER - Failed to submit draw command buffer %d", result);
-	}
-}
-
 Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 {
 	this->context = context;
@@ -76,59 +48,32 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 
 	std::vector<std::string> diffuseTextureNames;
 
-	std::string location = RenderFramework::loadSceneModels(filename, &meshes, &diffuseTextureNames);
+	RenderFramework::loadSceneModels(filename, &models);
 
-	for (auto& mesh : meshes)
+	for (auto& model : models)
 	{
-		INFO("SCENE3D - Loaded model %s with %lu vertices", mesh.name.c_str(), mesh.vertices.size());
-
 		// Create Vertex/Index/Instance Buffers
-		RenderFramework::createMeshBuffers(context, &mesh);
-	}
+		for (auto& mesh : model.shapes)
+			RenderFramework::createMeshBuffers(context, &mesh);
 
+		RenderFramework::createInstanceBuffer(context, model.instances, &model.instanceBuffer, &model.instanceMemory, &model.instanceBufferSize);
+
+		// Load Textures
+		for (auto& material : model.materials)
+		{
+			material.ka   = loadMeshTexture(context, renderer, &material.ambientTexture);
+			material.kd   = loadMeshTexture(context, renderer, &material.diffuseTexture);
+			material.ks   = loadMeshTexture(context, renderer, &material.specularTexture);
+			material.norm = loadMeshTexture(context, renderer, &material.normalTexture);
+
+			createBuffer(context, sizeof(Material) - offsetof(Material, ambient), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			             &material.buffer, &material.bufferMemory);
+		}
+	}
 	// Load Shaders
 	RenderFramework::createShaderModule(context, "../assets/shaders/vert.spv", &vertexShader);
 	RenderFramework::createShaderModule(context, "../assets/shaders/frag.spv", &fragmentShader);
-
-	// Load Textures
-	textureImages.resize(diffuseTextureNames.size());
-	textureImageMemorys.resize(diffuseTextureNames.size());
-	textureImageViews.resize(diffuseTextureNames.size());
-	int i = 0;
-	for (auto& dTextureName : diffuseTextureNames)
-	{
-		try
-		{
-			loadMeshTexture(context, renderer, (location + dTextureName).c_str(), &textureImages[i], &textureImageMemorys[i], &textureImageViews[i]);
-		}
-		catch (int e)
-		{
-			for (int i = 0; i < textureImages.size(); i++)
-			{
-				vkDestroyImage(context->device, textureImages[i], nullptr);
-				vkFreeMemory(context->device, textureImageMemorys[i], nullptr);
-				vkDestroyImageView(context->device, textureImageViews[i], nullptr);
-			}
-
-			for (auto& mesh : meshes)
-			{
-				vkDestroyBuffer(context->device, mesh.vertexBuffer, nullptr);
-				vkFreeMemory(context->device, mesh.vertexMemory, nullptr);
-
-				vkDestroyBuffer(context->device, mesh.indexBuffer, nullptr);
-				vkFreeMemory(context->device, mesh.indexMemory, nullptr);
-
-				vkDestroyBuffer(context->device, mesh.instanceBuffer, nullptr);
-				vkFreeMemory(context->device, mesh.instanceMemory, nullptr);
-			}
-
-			vkDestroyShaderModule(context->device, vertexShader, nullptr);
-			vkDestroyShaderModule(context->device, fragmentShader, nullptr);
-
-			throw;
-		}
-		i++;
-	}
 
 	createMeshTextureSampler(context->device, &textureSampler);
 
@@ -168,28 +113,49 @@ Scene3D::~Scene3D()
 	}
 
 	vkDestroyDescriptorSetLayout(context->device, descriptorSetLayout, nullptr);
-	vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
 
 	vkDestroySampler(context->device, textureSampler, nullptr);
 
-	for (int i = 0; i < textureImages.size(); i++)
+	for (auto& model : models)
 	{
-		vkDestroyImage(context->device, textureImages[i], nullptr);
-		vkFreeMemory(context->device, textureImageMemorys[i], nullptr);
-		vkDestroyImageView(context->device, textureImageViews[i], nullptr);
+		vkDestroyBuffer(context->device, model.instanceBuffer, nullptr);
+		vkFreeMemory(context->device, model.instanceMemory, nullptr);
+
+		for (auto& mesh : model.shapes)
+		{
+			vkDestroyBuffer(context->device, mesh.vertexBuffer, nullptr);
+			vkFreeMemory(context->device, mesh.vertexMemory, nullptr);
+
+			vkDestroyBuffer(context->device, mesh.indexBuffer, nullptr);
+			vkFreeMemory(context->device, mesh.indexMemory, nullptr);
+		}
+
+		for (auto& material : model.materials)
+		{
+			vkDestroyDescriptorSetLayout(context->device, material.descriptorSetLayout, nullptr);
+
+			vkDestroyBuffer(context->device, material.buffer, nullptr);
+			vkFreeMemory(context->device, material.bufferMemory, nullptr);
+
+			vkDestroyImage(context->device, material.ambientTexture.image, nullptr);
+			vkFreeMemory(context->device, material.ambientTexture.memory, nullptr);
+			vkDestroyImageView(context->device, material.ambientTexture.imageView, nullptr);
+
+			vkDestroyImage(context->device, material.diffuseTexture.image, nullptr);
+			vkFreeMemory(context->device, material.diffuseTexture.memory, nullptr);
+			vkDestroyImageView(context->device, material.diffuseTexture.imageView, nullptr);
+
+			vkDestroyImage(context->device, material.specularTexture.image, nullptr);
+			vkFreeMemory(context->device, material.specularTexture.memory, nullptr);
+			vkDestroyImageView(context->device, material.specularTexture.imageView, nullptr);
+
+			vkDestroyImage(context->device, material.normalTexture.image, nullptr);
+			vkFreeMemory(context->device, material.normalTexture.memory, nullptr);
+			vkDestroyImageView(context->device, material.normalTexture.imageView, nullptr);
+		}
 	}
 
-	for (auto& mesh : meshes)
-	{
-		vkDestroyBuffer(context->device, mesh.vertexBuffer, nullptr);
-		vkFreeMemory(context->device, mesh.vertexMemory, nullptr);
-
-		vkDestroyBuffer(context->device, mesh.indexBuffer, nullptr);
-		vkFreeMemory(context->device, mesh.indexMemory, nullptr);
-
-		vkDestroyBuffer(context->device, mesh.instanceBuffer, nullptr);
-		vkFreeMemory(context->device, mesh.instanceMemory, nullptr);
-	}
+	vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
 
 	vkDestroyShaderModule(context->device, vertexShader, nullptr);
 	vkDestroyShaderModule(context->device, fragmentShader, nullptr);
@@ -215,10 +181,9 @@ void Scene3D::getVertexInputDescriptions(std::vector<VkVertexInputBindingDescrip
 
 void Scene3D::setupDescriptors()
 {
-	std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+	std::vector<VkDescriptorSetLayoutBinding> bindings(1);
 
 	bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-	bindings[1] = getDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureImages.size(), VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
 
 	createVkDescriptorPool(context->device, bindings, renderer->length, &descriptorPool);
 	createVkDescriptorSetLayout(context->device, bindings, &descriptorSetLayout);
@@ -238,7 +203,7 @@ void Scene3D::setupDescriptors()
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(UBO);
 
-		std::vector<VkWriteDescriptorSet> descriptorWrites(2);
+		std::vector<VkWriteDescriptorSet> descriptorWrites(1);
 
 		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrites[0].dstSet = descriptorSets[i];
@@ -250,25 +215,99 @@ void Scene3D::setupDescriptors()
 		descriptorWrites[0].pImageInfo = nullptr;
 		descriptorWrites[0].pTexelBufferView = nullptr;
 
-		std::vector<VkDescriptorImageInfo> imageInfos(textureImages.size());
-		for (int j = 0; j < imageInfos.size(); j++)
-		{
-			imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfos[j].imageView = textureImageViews[j];
-			imageInfos[j].sampler = textureSampler;
-		}
-
-		descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[1].dstSet = descriptorSets[i];
-		descriptorWrites[1].dstBinding = 1;
-		descriptorWrites[1].dstArrayElement = 0;
-		descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		descriptorWrites[1].descriptorCount = imageInfos.size();
-		descriptorWrites[1].pBufferInfo = nullptr;
-		descriptorWrites[1].pImageInfo = imageInfos.data();
-		descriptorWrites[1].pTexelBufferView = nullptr;
-
 		vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+	}
+
+	for (auto& model : models)
+	{
+		for (auto& material : model.materials)
+		{
+			bindings.resize(2);
+			bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+			bindings[1] = getDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+
+			createVkDescriptorPool(context->device, bindings, 1, &material.descriptorPool);
+			createVkDescriptorSetLayout(context->device, bindings, &material.descriptorSetLayout);
+
+			layouts.resize(1);
+			layouts[0] = material.descriptorSetLayout;
+
+			std::vector<VkDescriptorSet> set(1);
+			allocateVkDescriptorSets(context->device, material.descriptorPool, layouts, &set);
+			material.descriptorSet = set[0];
+
+			std::vector<VkDescriptorImageInfo> imageInfos;
+
+			if (material.ka)
+			{
+				VkDescriptorImageInfo info = {};
+				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				info.imageView = material.ambientTexture.imageView;
+				info.sampler = textureSampler;
+				imageInfos.push_back(info);
+
+				DEBUG("a");
+			}
+			if (material.kd)
+			{
+				VkDescriptorImageInfo info = {};
+				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				info.imageView = material.diffuseTexture.imageView;
+				info.sampler = textureSampler;
+				imageInfos.push_back(info);
+
+				DEBUG("d");
+			}
+			if (material.ks)
+			{
+				VkDescriptorImageInfo info = {};
+				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				info.imageView = material.specularTexture.imageView;
+				info.sampler = textureSampler;
+				imageInfos.push_back(info);
+
+				DEBUG("s");
+			}
+			if (material.norm)
+			{
+				VkDescriptorImageInfo info = {};
+				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				info.imageView = material.normalTexture.imageView;
+				info.sampler = textureSampler;
+				imageInfos.push_back(info);
+
+				DEBUG("n");
+			}
+			std::vector<VkWriteDescriptorSet> descriptorWrites(2);
+
+			VkDescriptorBufferInfo bufferInfo = {};
+			bufferInfo.buffer = material.buffer;
+			bufferInfo.offset = 0;
+			bufferInfo.range = sizeof(Material) - offsetof(Material, ambient);
+
+			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[0].dstSet = material.descriptorSet;
+			descriptorWrites[0].dstBinding = 0;
+			descriptorWrites[0].dstArrayElement = 0;
+			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptorWrites[0].descriptorCount = 1;
+			descriptorWrites[0].pBufferInfo = &bufferInfo;
+			descriptorWrites[0].pImageInfo = nullptr;
+			descriptorWrites[0].pTexelBufferView = nullptr;
+
+			descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[1].dstSet = material.descriptorSet;
+			descriptorWrites[1].dstBinding = 1;
+			descriptorWrites[1].dstArrayElement = 0;
+			descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[1].descriptorCount = imageInfos.size();
+			descriptorWrites[1].pBufferInfo = nullptr;
+			descriptorWrites[1].pImageInfo = imageInfos.data();
+			descriptorWrites[1].pTexelBufferView = nullptr;
+
+
+			vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+		}
 	}
 }
 
@@ -384,10 +423,12 @@ void Scene3D::createPipeline()
 	colorBlending.blendConstants[2] = 0.0f;
 	colorBlending.blendConstants[3] = 0.0f;
 
+	VkDescriptorSetLayout layouts[] = {descriptorSetLayout, models[0].materials[0].descriptorSetLayout};
+
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = 1;
-	pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+	pipelineLayoutInfo.setLayoutCount = 2;
+	pipelineLayoutInfo.pSetLayouts = layouts;
 	pipelineLayoutInfo.pushConstantRangeCount = 0;
 	pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -461,13 +502,18 @@ void Scene3D::recordCommands()
 
 		vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 
-		for (auto& mesh : meshes)
+		for (auto& model : models)
 		{
-			std::vector<VkBuffer> vertexBuffers = {mesh.vertexBuffer, mesh.instanceBuffer};
-			std::vector<VkDeviceSize> offsets = {0, 0};
-			vkCmdBindVertexBuffers(commandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
-			vkCmdBindIndexBuffer(commandBuffers[i], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdDrawIndexed(commandBuffers[i], mesh.indices.size(), mesh.instances.size(), 0, 0, 0);
+			for (auto& mesh : model.shapes)
+			{
+				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &model.materials[mesh.materialID].descriptorSet, 0, nullptr);
+
+				std::vector<VkBuffer> vertexBuffers = {mesh.vertexBuffer, model.instanceBuffer};
+				std::vector<VkDeviceSize> offsets = {0, 0};
+				vkCmdBindVertexBuffers(commandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
+				vkCmdBindIndexBuffer(commandBuffers[i], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(commandBuffers[i], mesh.indices.size(), model.instances.size(), 0, 0, 0);
+			}
 		}
 
 		vkCmdEndRenderPass(commandBuffers[i]);

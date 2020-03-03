@@ -8,11 +8,11 @@
 
 struct Camera
 {
-	float position[3] = {0.0f, 0.0f, 0.0f};
+	float position[3] = {0.0f, 0.0f, -1.0f};
 	float direction[3] = {0.0f, 0.0f, 1.0f};
 	float right[3] = {-1.0f, 0.0f, 0.0f};
 
-	float theta = -1.55f;
+	float theta = 1.55f;
 	float phi = 1.55f;
 };
 
@@ -52,6 +52,7 @@ class CameraSystem : public System
 
 		void startRunning(void * data);
 		void stopRunning(void * data);
+		void onSceneLoad(void * data);
 		void onKeyPress(void * data);
 		void onKeyRelease(void * data);
 		void setMouseDelta(void * data);

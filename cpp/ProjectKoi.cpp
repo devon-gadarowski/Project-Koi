@@ -8,9 +8,9 @@ int main()
 {
 	MessageBus * msgBus = new MessageBus();
 
+	msgBus->registerSystem(new InputSystem());
 	msgBus->registerSystem(new ConsoleSystem());
 	msgBus->registerSystem(new RenderSystem());
-	msgBus->registerSystem(new InputSystem());
 	msgBus->registerSystem(new CameraSystem());
 
 	while (!msgBus->needsDestroying)

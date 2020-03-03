@@ -1,8 +1,3 @@
-
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_vulkan.h>
-
 #include <RenderFramework.h>
 
 using namespace RenderFramework;
@@ -31,8 +26,59 @@ void GUI::fpsMeter(long elapsedTime)
 void GUI::console()
 {
 	ImGui::Begin("Console");
-    ImGui::Text("This will be a console");
+	const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+	ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+	for (int i = history.size()-1; i >= 0; i--)
+		ImGui::Text("%s", history[i].c_str());
+
+	ImGui::EndChild();
+	ImGui::Separator();
+	const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory;
+    if (ImGui::InputText("Test", buffer, 30, flags, [](ImGuiInputTextCallbackData * data)->int { return ((GUI *) data->UserData)->onConsoleUpdate(data); }, (void *) this))
+	{
+		history.push_back(std::string(buffer));
+		buffer[0] = '\0';
+
+		msgBus->sendMessageNow(Message(ProcessCommand, (void *) &history[historyIndex]));
+
+		historyIndex++;
+	}
+
 	ImGui::End();
+}
+
+int GUI::onConsoleUpdate(ImGuiInputTextCallbackData * data)
+{
+	if (data->EventKey == ImGuiKey_UpArrow)
+	{
+		if (historyIndex > 0)
+			historyIndex--;
+	}
+	else if (data->EventKey == ImGuiKey_DownArrow)
+	{
+		if (historyIndex < history.size())
+			historyIndex++;
+	}
+	else if (data->EventKey == ImGuiKey_Tab)
+	{
+		// TODO: Implement Completion
+	}
+
+	if (historyIndex == history.size())
+	{
+		strcpy(data->Buf, "");
+		data->BufTextLen = 0;
+	}
+	else
+	{
+		strcpy(data->Buf, history[historyIndex].c_str());
+		data->BufTextLen = history[historyIndex].length();
+	}
+
+	data->BufDirty = true;
+
+	return 0;
 }
 
 void GUI::update(long elapsedTime)
@@ -76,74 +122,11 @@ VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
 	return commandBuffers[imageIndex];
 }
 
-void GUI::draw()
-{
-	uint32_t imageIndex = renderer->frameIndex % renderer->length;
-
-	vkWaitForFences(context->device, 1, &renderer->fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
-	vkResetFences(context->device, 1, &renderer->fences[imageIndex]);
-
-	vkResetCommandPool(context->device, commandPools[imageIndex], 0);
-	VkCommandBufferBeginInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commandBuffers[imageIndex], &info);
-
-	vkCmdPipelineBarrier(
-		commandBuffers[imageIndex],
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		0, nullptr);
-
-	VkClearValue clearColors[3];
-	clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-	clearColors[1].depthStencil = {1.0f, 0};
-	clearColors[2].color = {0.0f, 0.0f, 0.0f, 1.0f};
-
-	VkRenderPassBeginInfo passInfo = {};
-	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	passInfo.renderPass = renderPass;
-	passInfo.framebuffer = framebuffers[imageIndex];
-	passInfo.renderArea.extent.width = renderer->extent.width;
-	passInfo.renderArea.extent.height = renderer->extent.height;
-	passInfo.clearValueCount = 1;
-	passInfo.pClearValues = clearColors;
-	vkCmdBeginRenderPass(commandBuffers[imageIndex], &passInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[imageIndex]);
-
-	// Submit command buffer
-	vkCmdEndRenderPass(commandBuffers[imageIndex]);
-	vkEndCommandBuffer(commandBuffers[imageIndex]);
-
-	VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-	VkSemaphore waitSemaphores[] = {renderer->imageAvailable, renderer->renderFinished};
-
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &renderer->renderFinished;
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderer->guiFinished;
-
-	VkResult result = vkQueueSubmit(context->graphicsQueue.queue, 1, &submitInfo, renderer->fences[imageIndex]);
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDERER - Failed to submit draw command buffer %d", result);
-	}
-}
-
-GUI::GUI(Context * context, Renderer * renderer)
+GUI::GUI(Context * context, Renderer * renderer, MessageBus * msgBus)
 {
 	this->context = context;
 	this->renderer = renderer;
+	this->msgBus = msgBus;
 
 	// Create imgui context
 	IMGUI_CHECKVERSION();
@@ -213,6 +196,9 @@ GUI::GUI(Context * context, Renderer * renderer)
 	frameCount = 0;
 	FPS = 0;
 	timeBeforeFPSUpdate = 1000;
+
+	buffer[0] = '\0';
+	historyIndex = 0;
 
 	DEBUG("GUI - GUI Created");
 }
