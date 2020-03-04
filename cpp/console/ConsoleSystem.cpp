@@ -15,8 +15,8 @@ ConsoleSystem::ConsoleSystem()
 {
 	DEBUG("CONSOLE_SYSTEM - ConsoleSystem created");
 	//setMessageCallback(SystemRegistered, (message_method_t) &ConsoleSystem::start);
-	setMessageCallback(ConsolePause, (message_method_t) &ConsoleSystem::pause);
-	setMessageCallback(ConsoleResume, (message_method_t) &ConsoleSystem::resume);
+	//setMessageCallback(ConsolePause, (message_method_t) &ConsoleSystem::pause);
+	//setMessageCallback(ConsoleResume, (message_method_t) &ConsoleSystem::resume);
 
 	setMessageCallback(ProcessCommand, (message_method_t) &ConsoleSystem::processCommand);
 
@@ -25,11 +25,11 @@ ConsoleSystem::ConsoleSystem()
 
 ConsoleSystem::~ConsoleSystem()
 {
-	stop(nullptr);
+	//stop(nullptr);
 	DEBUG("CONSOLE_SYSTEM - ConsoleSystem Destroyed");
 }
 
-void ConsoleSystem::start(void * data)
+/*void ConsoleSystem::start(void * data)
 {
 	if (data != this)
 		return;
@@ -67,19 +67,15 @@ void ConsoleSystem::pause(void * data)
 void ConsoleSystem::resume(void * data)
 {
 	consolePause = false;
-}
+}*/
 
 void ConsoleSystem::registerCommands()
 {
-	commands[hashCode("init")] = &ConsoleSystem::init;
-	commands[hashCode("initialize")] = &ConsoleSystem::init;
-	commands[hashCode("shutdown")] = &ConsoleSystem::shutdown;
-	commands[hashCode("stop")] = &ConsoleSystem::shutdown;
 	commands[hashCode("exit")] = &ConsoleSystem::exit;
 	commands[hashCode("loadscene")] = &ConsoleSystem::loadScene;
 	commands[hashCode("load")] = &ConsoleSystem::loadScene;
 }
-
+/*
 void ConsoleSystem::readConsoleInputs()
 {
 	std::string command;
@@ -98,7 +94,7 @@ void ConsoleSystem::readConsoleInputs()
 		}
 	}
 }
-
+*/
 void ConsoleSystem::processCommand(void * data)
 {
 	std::string command = *((std::string *) data);
@@ -151,23 +147,6 @@ long ConsoleSystem::hashCode(std::string command)
 	return hash;
 }
 
-void ConsoleSystem::init(std::vector<std::string> args)
-{
-
-	if (args.size() < 2)
-		msgBus->sendMessage(Message(Initialize));
-	else
-		msgBus->sendMessage(Message(Initialize, &args[1]));
-}
-
-void ConsoleSystem::shutdown(std::vector<std::string> args)
-{
-	if (args.size() < 2)
-		msgBus->sendMessage(Message(Shutdown));
-	else
-		msgBus->sendMessage(Message(Shutdown, &args[1]));
-}
-
 void ConsoleSystem::exit(std::vector<std::string> args)
 {
 	msgBus->sendMessage(Message(Shutdown));
@@ -179,7 +158,7 @@ void ConsoleSystem::loadScene(std::vector<std::string> args)
 	if (args.size() < 2)
 		return;
 
-	args[1].append(".txt");
+	args[1].append(".json");
 
 	msgBus->sendMessageNow(Message(LoadScene, &args[1]));
 }

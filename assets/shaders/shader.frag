@@ -2,11 +2,6 @@
 
 layout(set = 1, binding = 0) uniform Material
 {
-	bool ka;
-	bool kd;
-	bool ks;
-	bool norm;
-
 	vec3 ambient;
 	vec3 diffuse;
 	vec3 specular;
@@ -15,7 +10,7 @@ layout(set = 1, binding = 0) uniform Material
 	float opacity;
 }inMaterial;
 
-layout(set = 1, binding = 1) uniform sampler2D texSampler[4];
+layout(set = 1, binding = 1) uniform sampler2D diffuseTexture;
 
 layout(location = 0) in vec3 inLightPos;
 layout(location = 1) in vec3 inPos;
@@ -26,45 +21,23 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-
-	int texID = 0;
+	vec4 color = texture(diffuseTexture, inTexCoord);
 
 	// AMBIENT
-	if (inMaterial.ka == true)
-		ambient = vec3(texture(texSampler[texID++], inTexCoord));
-	else if (inMaterial.kd == true)
-		ambient = vec3(texture(texSampler[texID], inTexCoord));
-	else
-		ambient = inMaterial.ambient;
+	float ambient = 0.1;
 
 	// DIFFUSE
 	vec3 lightDir = normalize(inLightPos - inPos);
 	vec3 norm = normalize(inNormal);
-	float diffuseStr = clamp(dot(lightDir, norm), 0.0, 1.0);
-	if (inMaterial.kd == true)
-		diffuse = diffuseStr * vec3(texture(texSampler[texID++], inTexCoord));
-	else
-		diffuse = diffuseStr * inMaterial.diffuse;
+	float diffuse = clamp(dot(lightDir, norm), 0.0, 1.0);
 
 	// SPECULAR
 	float specularIntensity = 0.8;
 	vec3 reflectDir = reflect(-lightDir, norm);
-	float specularStr = pow(max(dot(normalize(-inPos), reflectDir), 0.0), inMaterial.shininess);
-	if (inMaterial.ks == true)
-		specular = specularStr * vec3(texture(texSampler[texID++], inTexCoord));
-	else
-		specular = specularStr * inMaterial.specular;
+	float specular = pow(max(dot(normalize(-inPos), reflectDir), 0.0), inMaterial.shininess);
 
 	// OPACITY
-	float opacity = inMaterial.opacity;
+	vec4 opacity = vec4(1.0, 1.0, 1.0, inMaterial.opacity);
 
-	// FOG
-	//vec3 fogColor = vec3(1.0, 1.0, 1.0);
-	//float fogFactor = clamp((sqrt(dot(inPos, inPos)) - 40.0) / 10.0, 0.0, 1.0);
-	//vec4 fog = vec4(fogFactor * fogColor, 1.0);
-
-	outColor = vec4(ambient + diffuse + specular, opacity);// + fog;
+	outColor = (ambient + diffuse + specular) * color * opacity;
 }

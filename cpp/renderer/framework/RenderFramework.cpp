@@ -1539,8 +1539,6 @@ void loadOBJ(std::string filename, std::string location, Model * m)
 					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
 				};
 
-				mesh.materialID = shape.mesh.material_ids[f];
-
 				if (uniqueVertices.count(vertex) == 0)
 				{
 					uniqueVertices[vertex] = static_cast<uint32_t>(mesh.vertices.size());
@@ -1549,6 +1547,7 @@ void loadOBJ(std::string filename, std::string location, Model * m)
 
 				mesh.indices.push_back(uniqueVertices[vertex]);
 			}
+			mesh.materialID = shape.mesh.material_ids[f];
 			index_offset += fv;
 		}
 		m->shapes.push_back(mesh);
@@ -1592,7 +1591,7 @@ void loadSceneModels(std::string filename, std::vector<Model> * models)
 	if (!i.is_open())
 	{
 		PANIC("Failed to open %s", filename.c_str());
-		throw;
+		throw 117;
 	}
 
 	i >> input;
@@ -1998,6 +1997,23 @@ void createVkDescriptorSetLayout(VkDevice device, std::vector<VkDescriptorSetLay
 	if (result != VK_SUCCESS)
 	{
 		PANIC("RENDER_FRAMEWORK - Failed to create VkDescriptorSetLayout %d", result);
+	}
+}
+
+void allocateVkDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t count,
+                              VkDescriptorSetLayout * layouts, VkDescriptorSet * descriptorSets)
+{
+	VkDescriptorSetAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.pNext = nullptr;
+	allocInfo.descriptorPool = descriptorPool;
+	allocInfo.descriptorSetCount = count;
+	allocInfo.pSetLayouts = layouts;
+
+	int result = vkAllocateDescriptorSets(device, &allocInfo, descriptorSets);
+	if (result != VK_SUCCESS)
+	{
+		PANIC("RENDER_FRAMEWORK - Failed to allocate Descriptor Sets %d", result);
 	}
 }
 

@@ -22,7 +22,7 @@ void RenderSystem::update(long elapsedTime)
 
 	if (!sceneLoaded)
 	{
-		std::string defaultScene("1k.json");
+		std::string defaultScene("porsche.json");
 		loadScene(&defaultScene);
 		return;
 	}
@@ -32,9 +32,9 @@ void RenderSystem::update(long elapsedTime)
 	std::vector<VkCommandBuffer> commandBuffers;
 
 	scene->updateUBO(imageIndex);
-	commandBuffers.push_back(scene->getFrame(imageIndex));
-
 	gui->update(elapsedTime);
+	
+	commandBuffers.push_back(scene->getFrame(imageIndex));
 	commandBuffers.push_back(gui->getFrame(imageIndex));
 
 	renderer->render(imageIndex, commandBuffers);
@@ -98,9 +98,6 @@ void RenderSystem::shutdown(void * data)
 
 void RenderSystem::loadScene(void * data)
 {
-	if (sceneLoaded)
-		stopScene(nullptr);
-
 	if (!initialized)
 		initialize(nullptr);
 
@@ -108,7 +105,14 @@ void RenderSystem::loadScene(void * data)
 	{
 		std::string sceneName = *((std::string *) data);
 
-		scene = new RenderFramework::Scene3D(context, renderer, sceneName);
+		DEBUG("Scene name: %s", sceneName.c_str());
+
+		RenderFramework::Scene3D * newScene = new RenderFramework::Scene3D(context, renderer, sceneName);
+
+		if (sceneLoaded)
+			stopScene(nullptr);
+
+		this->scene = newScene;
 		sceneLoaded = true;
 
 		msgBus->sendMessage(Message(SceneLoaded, scene));
@@ -116,7 +120,6 @@ void RenderSystem::loadScene(void * data)
 	catch (int e)
 	{
 		WARN("RENDER_SYSTEM - Failed to load scence %s", ((std::string *) data)->c_str());
-		sceneLoaded = false;
 	}
 }
 

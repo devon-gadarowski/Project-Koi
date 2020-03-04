@@ -1,17 +1,5 @@
 #version 450
 
-struct Material
-{
-	vec4 texIDs;
-
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	vec3 emission;
-	int shininess;
-	float opacity;
-};
-
 layout(set = 0, binding = 0) uniform UniformBufferObject
 {
 	mat4 view;

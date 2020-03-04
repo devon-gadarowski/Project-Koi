@@ -109,8 +109,8 @@ struct Mat4
 struct Vertex
 {
 	Vec3 position;
-	Vec3 normal;
 	Vec2 tex;
+	Vec3 normal;
 
 	static void getAttributeDescriptions(uint32_t binding, std::vector<VkVertexInputAttributeDescription> * attribDesc)
 	{
@@ -123,14 +123,14 @@ struct Vertex
 		attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDesc->back().offset = offsetof(Vertex, normal);
+		attribDesc->back().format = VK_FORMAT_R32G32_SFLOAT;
+		attribDesc->back().offset = offsetof(Vertex, tex);
 
 		attribDesc->emplace_back();
 		attribDesc->back().location = attribDesc->size() - 1;
 		attribDesc->back().binding = binding;
-		attribDesc->back().format = VK_FORMAT_R32G32_SFLOAT;
-		attribDesc->back().offset = offsetof(Vertex, tex);
+		attribDesc->back().format = VK_FORMAT_R32G32B32_SFLOAT;
+		attribDesc->back().offset = offsetof(Vertex, normal);
 	}
 
 	bool operator == (const Vertex& other) const
@@ -161,19 +161,19 @@ struct Material
 
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorSet descriptorSet;
+	std::vector<VkDescriptorSet> descriptorSets;
 
 	bool ka = true;
 	bool kd = true;
 	bool ks = true;
 	bool norm = true;
 
-	Vec3 ambient;
-	Vec3 diffuse;
-	Vec3 specular;
-	Vec3 emission;
-	int32_t shininess;
-	float opacity;
+	alignas(16) Vec3 ambient;
+	alignas(16) Vec3 diffuse;
+	alignas(16) Vec3 specular;
+	alignas(16) Vec3 emission;
+	alignas(4) int32_t shininess;
+	alignas(4) float opacity;
 };
 
 struct Instance
@@ -436,7 +436,8 @@ class Scene3D
 		std::vector<VkDeviceMemory> uniformBuffersMemory;
 
 		VkDescriptorPool descriptorPool;
-		VkDescriptorSetLayout descriptorSetLayout;
+		VkDescriptorSetLayout cameraDescriptorSetLayout;
+		VkDescriptorSetLayout materialDescriptorSetLayout;
 		std::vector<VkDescriptorSet> descriptorSets;
 
 		VkShaderModule vertexShader;
@@ -569,6 +570,7 @@ VkDescriptorSetLayoutBinding getDescriptorSetLayoutBinding(uint32_t binding, VkD
 void createVkDescriptorPool(VkDevice device, std::vector<VkDescriptorSetLayoutBinding>& bindings, uint32_t maxSets, VkDescriptorPool * descriptorPool);
 void createVkDescriptorSetLayout(VkDevice device, std::vector<VkDescriptorSetLayoutBinding>& bindings, VkDescriptorSetLayout * layout);
 void allocateVkDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, std::vector<VkDescriptorSetLayout>& layouts, std::vector<VkDescriptorSet> * descriptorSets);
+void allocateVkDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t count, VkDescriptorSetLayout * layouts, VkDescriptorSet * descriptorSets);
 }
 
 #endif

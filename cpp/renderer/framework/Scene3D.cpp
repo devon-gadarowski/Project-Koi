@@ -46,9 +46,14 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 	this->context = context;
 	this->renderer = renderer;
 
-	std::vector<std::string> diffuseTextureNames;
-
-	RenderFramework::loadSceneModels(filename, &models);
+	try
+	{
+		RenderFramework::loadSceneModels(filename, &models);
+	}
+	catch (int e)
+	{
+		throw;
+	}
 
 	for (auto& model : models)
 	{
@@ -69,6 +74,13 @@ Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
 			createBuffer(context, sizeof(Material) - offsetof(Material, ambient), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			             &material.buffer, &material.bufferMemory);
+
+			DEBUG("Sanity Check: %lu, %lu, %lu", sizeof(Material), offsetof(Material, ambient), (unsigned long) (&material.ambient) - (unsigned long)(&material));
+
+			void * data;
+			vkMapMemory(context->device, material.bufferMemory, 0, sizeof(Material) - offsetof(Material, ambient), 0, &data);
+			memcpy(data, &material.ambient, sizeof(Material) - offsetof(Material, ambient));
+			vkUnmapMemory(context->device, material.bufferMemory);
 		}
 	}
 	// Load Shaders
@@ -112,7 +124,8 @@ Scene3D::~Scene3D()
 		vkFreeMemory(context->device, uniformBuffersMemory[i], nullptr);
 	}
 
-	vkDestroyDescriptorSetLayout(context->device, descriptorSetLayout, nullptr);
+	vkDestroyDescriptorSetLayout(context->device, cameraDescriptorSetLayout, nullptr);
+	vkDestroyDescriptorSetLayout(context->device, materialDescriptorSetLayout, nullptr);
 
 	vkDestroySampler(context->device, textureSampler, nullptr);
 
@@ -132,26 +145,14 @@ Scene3D::~Scene3D()
 
 		for (auto& material : model.materials)
 		{
-			vkDestroyDescriptorSetLayout(context->device, material.descriptorSetLayout, nullptr);
+			vkDestroyDescriptorPool(context->device, material.descriptorPool, nullptr);
 
 			vkDestroyBuffer(context->device, material.buffer, nullptr);
 			vkFreeMemory(context->device, material.bufferMemory, nullptr);
 
-			vkDestroyImage(context->device, material.ambientTexture.image, nullptr);
-			vkFreeMemory(context->device, material.ambientTexture.memory, nullptr);
-			vkDestroyImageView(context->device, material.ambientTexture.imageView, nullptr);
-
 			vkDestroyImage(context->device, material.diffuseTexture.image, nullptr);
 			vkFreeMemory(context->device, material.diffuseTexture.memory, nullptr);
 			vkDestroyImageView(context->device, material.diffuseTexture.imageView, nullptr);
-
-			vkDestroyImage(context->device, material.specularTexture.image, nullptr);
-			vkFreeMemory(context->device, material.specularTexture.memory, nullptr);
-			vkDestroyImageView(context->device, material.specularTexture.imageView, nullptr);
-
-			vkDestroyImage(context->device, material.normalTexture.image, nullptr);
-			vkFreeMemory(context->device, material.normalTexture.memory, nullptr);
-			vkDestroyImageView(context->device, material.normalTexture.imageView, nullptr);
 		}
 	}
 
@@ -182,19 +183,37 @@ void Scene3D::getVertexInputDescriptions(std::vector<VkVertexInputBindingDescrip
 void Scene3D::setupDescriptors()
 {
 	std::vector<VkDescriptorSetLayoutBinding> bindings(1);
-
 	bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
+	createVkDescriptorSetLayout(context->device, bindings, &cameraDescriptorSetLayout);
 
 	createVkDescriptorPool(context->device, bindings, renderer->length, &descriptorPool);
-	createVkDescriptorSetLayout(context->device, bindings, &descriptorSetLayout);
 
 	std::vector<VkDescriptorSetLayout> layouts(renderer->length);
 	for (auto& layout : layouts)
-		layout = this->descriptorSetLayout;
+		layout = cameraDescriptorSetLayout;
 
 	allocateVkDescriptorSets(context->device, descriptorPool, layouts, &descriptorSets);
-
 	uniformBuffers.resize(renderer->length);
+
+	bindings.resize(2);
+	bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+	bindings[1] = getDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+	createVkDescriptorSetLayout(context->device, bindings, &materialDescriptorSetLayout);
+
+	for (auto& model : models)
+	{
+		for (auto& material : model.materials)
+		{
+			createVkDescriptorPool(context->device, bindings, renderer->length, &material.descriptorPool);
+
+			material.descriptorSets.resize(renderer->length);
+			std::vector<VkDescriptorSetLayout> layouts(renderer->length);
+			for (auto& layout : layouts)
+				layout = materialDescriptorSetLayout;
+
+			allocateVkDescriptorSets(context->device, material.descriptorPool, layouts, &material.descriptorSets);
+		}
+	}
 
 	for (int i = 0; i < renderer->length; i++)
 	{
@@ -216,97 +235,45 @@ void Scene3D::setupDescriptors()
 		descriptorWrites[0].pTexelBufferView = nullptr;
 
 		vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-	}
 
-	for (auto& model : models)
-	{
-		for (auto& material : model.materials)
+		for (auto& model : models)
 		{
-			bindings.resize(2);
-			bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-			bindings[1] = getDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-
-			createVkDescriptorPool(context->device, bindings, 1, &material.descriptorPool);
-			createVkDescriptorSetLayout(context->device, bindings, &material.descriptorSetLayout);
-
-			layouts.resize(1);
-			layouts[0] = material.descriptorSetLayout;
-
-			std::vector<VkDescriptorSet> set(1);
-			allocateVkDescriptorSets(context->device, material.descriptorPool, layouts, &set);
-			material.descriptorSet = set[0];
-
-			std::vector<VkDescriptorImageInfo> imageInfos;
-
-			if (material.ka)
+			for (auto& material : model.materials)
 			{
-				VkDescriptorImageInfo info = {};
-				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				info.imageView = material.ambientTexture.imageView;
-				info.sampler = textureSampler;
-				imageInfos.push_back(info);
+				std::vector<VkWriteDescriptorSet> descriptorWrites(2);
 
-				DEBUG("a");
-			}
-			if (material.kd)
-			{
+				VkDescriptorBufferInfo bufferInfo = {};
+				bufferInfo.buffer = material.buffer;
+				bufferInfo.offset = 0;
+				bufferInfo.range = sizeof(Material) - offsetof(Material, ambient);
+
+				descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				descriptorWrites[0].dstSet = material.descriptorSets[i];
+				descriptorWrites[0].dstBinding = 0;
+				descriptorWrites[0].dstArrayElement = 0;
+				descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+				descriptorWrites[0].descriptorCount = 1;
+				descriptorWrites[0].pBufferInfo = &bufferInfo;
+				descriptorWrites[0].pImageInfo = nullptr;
+				descriptorWrites[0].pTexelBufferView = nullptr;
+
 				VkDescriptorImageInfo info = {};
 				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				info.imageView = material.diffuseTexture.imageView;
 				info.sampler = textureSampler;
-				imageInfos.push_back(info);
 
-				DEBUG("d");
+				descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				descriptorWrites[1].dstSet = material.descriptorSets[i];
+				descriptorWrites[1].dstBinding = 1;
+				descriptorWrites[1].dstArrayElement = 0;
+				descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				descriptorWrites[1].descriptorCount = 1;
+				descriptorWrites[1].pBufferInfo = nullptr;
+				descriptorWrites[1].pImageInfo = &info;
+				descriptorWrites[1].pTexelBufferView = nullptr;
+
+				vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 			}
-			if (material.ks)
-			{
-				VkDescriptorImageInfo info = {};
-				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				info.imageView = material.specularTexture.imageView;
-				info.sampler = textureSampler;
-				imageInfos.push_back(info);
-
-				DEBUG("s");
-			}
-			if (material.norm)
-			{
-				VkDescriptorImageInfo info = {};
-				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				info.imageView = material.normalTexture.imageView;
-				info.sampler = textureSampler;
-				imageInfos.push_back(info);
-
-				DEBUG("n");
-			}
-			std::vector<VkWriteDescriptorSet> descriptorWrites(2);
-
-			VkDescriptorBufferInfo bufferInfo = {};
-			bufferInfo.buffer = material.buffer;
-			bufferInfo.offset = 0;
-			bufferInfo.range = sizeof(Material) - offsetof(Material, ambient);
-
-			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[0].dstSet = material.descriptorSet;
-			descriptorWrites[0].dstBinding = 0;
-			descriptorWrites[0].dstArrayElement = 0;
-			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptorWrites[0].descriptorCount = 1;
-			descriptorWrites[0].pBufferInfo = &bufferInfo;
-			descriptorWrites[0].pImageInfo = nullptr;
-			descriptorWrites[0].pTexelBufferView = nullptr;
-
-			descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[1].dstSet = material.descriptorSet;
-			descriptorWrites[1].dstBinding = 1;
-			descriptorWrites[1].dstArrayElement = 0;
-			descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			descriptorWrites[1].descriptorCount = imageInfos.size();
-			descriptorWrites[1].pBufferInfo = nullptr;
-			descriptorWrites[1].pImageInfo = imageInfos.data();
-			descriptorWrites[1].pTexelBufferView = nullptr;
-
-
-			vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 		}
 	}
 }
@@ -423,7 +390,7 @@ void Scene3D::createPipeline()
 	colorBlending.blendConstants[2] = 0.0f;
 	colorBlending.blendConstants[3] = 0.0f;
 
-	VkDescriptorSetLayout layouts[] = {descriptorSetLayout, models[0].materials[0].descriptorSetLayout};
+	VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, materialDescriptorSetLayout};
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -506,12 +473,16 @@ void Scene3D::recordCommands()
 		{
 			for (auto& mesh : model.shapes)
 			{
-				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &model.materials[mesh.materialID].descriptorSet, 0, nullptr);
+				DEBUG("SANITY CHECK: materials_count=%lu, materialID=%d", model.materials.size(), mesh.materialID);
 
-				std::vector<VkBuffer> vertexBuffers = {mesh.vertexBuffer, model.instanceBuffer};
-				std::vector<VkDeviceSize> offsets = {0, 0};
-				vkCmdBindVertexBuffers(commandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
+				VkDescriptorSet descriptors[] = {descriptorSets[i], model.materials[mesh.materialID].descriptorSets[i]};
+				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptors, 0, nullptr);
+
+				VkBuffer vertexBuffers[] = {mesh.vertexBuffer, model.instanceBuffer};
+				VkDeviceSize offsets[] = {0, 0};
+				vkCmdBindVertexBuffers(commandBuffers[i], 0, 2, vertexBuffers, offsets);
 				vkCmdBindIndexBuffer(commandBuffers[i], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
 				vkCmdDrawIndexed(commandBuffers[i], mesh.indices.size(), model.instances.size(), 0, 0, 0);
 			}
 		}
