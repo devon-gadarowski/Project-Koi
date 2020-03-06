@@ -1,0 +1,12 @@
+{
+	"porsche":
+	{
+		"location":"assets/meshes/porsche/",
+		"model":"Porsche_911_GT2.obj",
+		"instance_count": 1,
+		"positions":
+		[
+			[0, 0, 0]
+		]
+	}
+}
