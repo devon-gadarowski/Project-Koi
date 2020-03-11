@@ -1,175 +1,108 @@
+#include <render/Renderer.h>
 
-#include <RenderFramework.h>
-
-using namespace RenderFramework;
-
-uint32_t Renderer::getNextImage()
+VkViewport Renderer::getDefaultVkViewport()
 {
-	uint32_t imageIndex;
-    vkAcquireNextImageKHR(context->device, swapchain, UINT64_MAX, imageAvailable, VK_NULL_HANDLE, &imageIndex);
+	VkViewport viewport = {};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = this->extent.width;
+	viewport.height = this->extent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
 
-	vkWaitForFences(context->device, 1, &fences[imageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
-	vkResetFences(context->device, 1, &fences[imageIndex]);
-
-	return imageIndex;
+    return viewport;
 }
 
-void Renderer::render(uint32_t imageIndex, std::vector<VkCommandBuffer> commandBuffers)
+VkRect2D Renderer::getDefaultScissor()
 {
-	VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+	VkRect2D scissor = {};
+	scissor.offset.x = 0;
+	scissor.offset.y = 0;
+	scissor.extent.width = this->extent.width;
+	scissor.extent.height = this->extent.height;
 
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &imageAvailable;
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = commandBuffers.size();
-	submitInfo.pCommandBuffers = commandBuffers.data();
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderFinished;
-
-	VkResult result = vkQueueSubmit(context->graphicsQueue.queue, 1, &submitInfo, fences[imageIndex]);
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDERER - Failed to submit draw command buffer %d", result);
-	}
+    return scissor;
 }
 
-void Renderer::present(uint32_t imageIndex)
+VkPipelineRasterizationStateCreateInfo Renderer::getDefaultRasterizer()
 {
-	VkResult result = VK_SUCCESS;
+    VkPipelineRasterizationStateCreateInfo rasterizer = {};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE; // Enable for VR
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_NONE;
+	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+	rasterizer.depthBiasConstantFactor = 0.0f;
+	rasterizer.depthBiasClamp = 0.0f;
+	rasterizer.depthBiasSlopeFactor = 0.0f;
 
-	VkPresentInfoKHR presentInfo = {};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.pNext = nullptr;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &renderFinished;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &swapchain;
-	presentInfo.pImageIndices = &imageIndex;
-	presentInfo.pResults = &result;
-
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDERER - Failed to present swapchain image %d", result);
-	}
-
-	vkQueuePresentKHR(context->presentQueue.queue, &presentInfo);
+    return rasterizer;
 }
 
-Renderer::Renderer(Context * context)
+VkPipelineMultisampleStateCreateInfo Renderer::getDefaultMultisampling()
 {
-	this->context = context;
+	VkPipelineMultisampleStateCreateInfo multisampling = {};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = this->sample_count;
+	multisampling.minSampleShading = 1.0f;
+	multisampling.pSampleMask = nullptr;
+	multisampling.alphaToCoverageEnable = VK_FALSE;
+	multisampling.alphaToOneEnable = VK_FALSE;
 
-	getSwapchainFormats(context->physicalDevice, context->surface, &colorFormat, &colorSpace, &depthFormat);
-	getSwapchainPresentMode(context->physicalDevice, context->surface, &presentMode);
-	getSwapchainExtent(context->physicalDevice, context->surface, &extent);
-	getSwapchainLength(context->physicalDevice, context->surface, &length);
-
-	createVkRenderPass(context->device, colorFormat, depthFormat, SAMPLE_COUNT, &renderPass);
-
-	createSwapchain();
-
-	DEBUG("RENDER_FRAMEWORK - Renderer Created");
+    return multisampling;
 }
 
-Renderer::~Renderer()
+VkPipelineDepthStencilStateCreateInfo Renderer::getDefaultDepthStencil()
 {
-	destroySwapchain();
-	destroyVkRenderPass(context->device, &renderPass);
+	VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
+	depthStencil.stencilTestEnable = VK_FALSE;
+	depthStencil.front = {};
+	depthStencil.back = {};
 
-	DEBUG("RENDER_FRAMEWORK - Renderer Destroyed");
+    return depthStencil;
 }
 
-void Renderer::createSwapchain()
+void Renderer::getDefaultColorBlendAttachments(std::vector<VkPipelineColorBlendAttachmentState> & colorBlendAttachments)
 {
-	uint32_t queueIndices [] = {context->graphicsQueue.index, context->transferQueue.index};
 
-	createVkSwapchainKHR(context->physicalDevice, context->device, context->surface, length, colorFormat,
-	                     colorSpace, extent, queueIndices, context->queueCount, presentMode, &swapchain);
+	VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_TRUE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
-	vkGetSwapchainImagesKHR(context->device, swapchain, &length, nullptr);
-	images.resize(length);
-	vkGetSwapchainImagesKHR(context->device, swapchain, &length, images.data());
-
-	imageViews.resize(length);
-	for (int i = 0; i < length; i++)
-	{
-		createVkImageView(context->physicalDevice, context->device, images[i], VK_IMAGE_VIEW_TYPE_2D,
-			              colorFormat, MIP_LEVELS, 1, VK_IMAGE_ASPECT_COLOR_BIT, &imageViews[i]);
-	}
-
-	if (SAMPLE_COUNT > 1)
-	{
-		createVkImage(context, VK_IMAGE_TYPE_2D, colorFormat,
-			          extent, MIP_LEVELS, 1, SAMPLE_COUNT, VK_IMAGE_TILING_OPTIMAL,
-			          VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-			          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &colorImage, &colorImageMemory);
-
-		transitionImageLayout(context, colorImage, colorFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 1);
-
-		createVkImageView(context->physicalDevice, context->device, colorImage, VK_IMAGE_VIEW_TYPE_2D,
-			              colorFormat, MIP_LEVELS, 1, VK_IMAGE_ASPECT_COLOR_BIT,
-			              &colorImageView);
-	}
-	if (depthFormat != VK_FORMAT_UNDEFINED)
-	{
-		createVkImage(context, VK_IMAGE_TYPE_2D, depthFormat,
-				      extent, MIP_LEVELS, 1, SAMPLE_COUNT, VK_IMAGE_TILING_OPTIMAL,
-				      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-				      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &depthImage, &depthImageMemory);
-
-		transitionImageLayout(context, depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
-
-		createVkImageView(context->physicalDevice, context->device, depthImage, VK_IMAGE_VIEW_TYPE_2D,
-				          depthFormat, MIP_LEVELS, 1, VK_IMAGE_ASPECT_DEPTH_BIT, &depthImageView);
-	}
-
-	framebuffers.resize(length);
-	for (int i = 0; i < length; i++)
-	{
-		createVkFramebuffer(context->device, nullptr, 0, renderPass, colorImageView, depthImageView,
-		                    imageViews[i], extent.width, extent.height, 1, &framebuffers[i]);
-	}
-
-	fences.resize(length);
-	for (int i = 0; i < length; i++)
-	{
-		createVkFence(context->device, nullptr, VK_FENCE_CREATE_SIGNALED_BIT, &fences[i]);
-	}
-
-	VkSemaphoreCreateInfo semaphoreInfo = {};
-	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &imageAvailable);
-	vkCreateSemaphore(context->device, &semaphoreInfo, nullptr, &renderFinished);
+	colorBlendAttachments.push_back(colorBlendAttachment);
 }
 
-void Renderer::destroySwapchain()
+VkPipelineColorBlendStateCreateInfo Renderer::getDefaultColorBlend(std::vector<VkPipelineColorBlendAttachmentState> & colorBlendAttachments)
 {
-	vkDestroySemaphore(context->device, imageAvailable, nullptr);
-	vkDestroySemaphore(context->device, renderFinished, nullptr);
+	VkPipelineColorBlendStateCreateInfo colorBlending = {};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.pNext = nullptr;
+	colorBlending.flags = 0;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.logicOp = VK_LOGIC_OP_COPY;
+	colorBlending.attachmentCount = colorBlendAttachments.size();
+	colorBlending.pAttachments = colorBlendAttachments.data();
+	colorBlending.blendConstants[0] = 0.0f;
+	colorBlending.blendConstants[1] = 0.0f;
+	colorBlending.blendConstants[2] = 0.0f;
+	colorBlending.blendConstants[3] = 0.0f;
 
-	for (int i = 0; i < length; i++)
-	{
-		vkDestroyFence(context->device, fences[i], nullptr);
-		vkDestroyImageView(context->device, imageViews[i], nullptr);
-		vkDestroyFramebuffer(context->device, framebuffers[i], nullptr);
-	}
-
-	if (colorImage != VK_NULL_HANDLE)
-	{
-		vkDestroyImageView(context->device, colorImageView, nullptr);
-		vkDestroyImage(context->device, colorImage, nullptr);
-		vkFreeMemory(context->device, colorImageMemory, nullptr);
-	}
-
-	if (depthImage != VK_NULL_HANDLE)
-	{
-		vkDestroyImageView(context->device, depthImageView, nullptr);
-		vkDestroyImage(context->device, depthImage, nullptr);
-		vkFreeMemory(context->device, depthImageMemory, nullptr);
-	}
-
-	destroyVkSwapchainKHR(context->device, &swapchain);
+    return colorBlending;
 }

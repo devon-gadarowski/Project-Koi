@@ -1,17 +1,47 @@
-#include <RenderFramework.h>
+#include <render/GUI.h>
+#include <render/Utilities.h>
 
-using namespace RenderFramework;
-
-void GUI::fpsMeter(long elapsedTime)
+GUIElement::GUIElement()
 {
-	timeBeforeFPSUpdate -= elapsedTime;
+
+}
+
+GUIElement::~GUIElement()
+{
+
+}
+
+FPSMeter::FPSMeter()
+{
+
+}
+
+FPSMeter::~FPSMeter()
+{
+
+}
+
+void FPSMeter::init()
+{
+    this->FPS = 0;
+    this->frameCount = 0;
+    this->timeBeforeFPSUpdate = 1000;
+}
+
+void FPSMeter::update(long elapsedTime)
+{
+    this->frameCount++;
+    this->timeBeforeFPSUpdate -= elapsedTime;
 	if (timeBeforeFPSUpdate < 0)
 	{
-		FPS = frameCount;
-		frameCount = 0;
-		timeBeforeFPSUpdate = 1000;
+		this->FPS = this->frameCount;
+		this->frameCount = 0;
+		this->timeBeforeFPSUpdate = 1000;
 	}
+}
 
+void FPSMeter::draw()
+{
     ImVec2 window_pos = ImVec2(10.0f, 10.0f);
     ImVec2 window_pos_pivot = ImVec2(0.0f, 0.0f);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
@@ -23,7 +53,31 @@ void GUI::fpsMeter(long elapsedTime)
     ImGui::End();
 }
 
-void GUI::console()
+Console::Console()
+{
+
+}
+
+Console::~Console()
+{
+
+}
+
+void Console::init()
+{
+	buffer[0] = '\0';
+	historyIndex = 0;
+
+	commands[hashCode("exit")] = &Console::exit;
+    commands[hashCode("add")] = &Console::addModel;
+}
+
+void Console::update(long elapsedTime)
+{
+
+}
+
+void Console::draw()
 {
 	ImGui::Begin("Console");
 	const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
@@ -35,12 +89,12 @@ void GUI::console()
 	ImGui::EndChild();
 	ImGui::Separator();
 	const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory;
-    if (ImGui::InputText("Test", buffer, 30, flags, [](ImGuiInputTextCallbackData * data)->int { return ((GUI *) data->UserData)->onConsoleUpdate(data); }, (void *) this))
+    if (ImGui::InputText("", buffer, 128, flags, [](ImGuiInputTextCallbackData * data)->int { return ((Console *) data->UserData)->onConsoleUpdate(data); }, (void *) this))
 	{
 		history.push_back(std::string(buffer));
 		buffer[0] = '\0';
 
-		msgBus->sendMessage(ProcessCommand, history[historyIndex]);
+		this->processCommand(history[historyIndex]);
 
 		historyIndex++;
 	}
@@ -48,7 +102,7 @@ void GUI::console()
 	ImGui::End();
 }
 
-int GUI::onConsoleUpdate(ImGuiInputTextCallbackData * data)
+int Console::onConsoleUpdate(ImGuiInputTextCallbackData * data)
 {
 	if (data->EventKey == ImGuiKey_UpArrow)
 	{
@@ -81,61 +135,159 @@ int GUI::onConsoleUpdate(ImGuiInputTextCallbackData * data)
 	return 0;
 }
 
-void GUI::update(long elapsedTime)
+void Console::processCommand(std::string command)
 {
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
+	if (command.length() == 0)
+		return;
 
-	//ImGui::ShowDemoWindow();
-	fpsMeter(elapsedTime);
-	console();
+	std::vector<std::string> args = parseCommandArgs(command);
 
-	ImGui::Render();
+	long hash = hashCode(args[0]);
+	auto action = commands.find(hash);
 
-	frameCount++;
+	if (action != commands.end())
+		(this->*(action->second))(args);
+    else
+        DEBUG("CONSOLE - Unknown Command %s", args[0].c_str());    
+    
 }
 
-VkCommandBuffer GUI::getFrame(uint32_t imageIndex)
+std::vector<std::string> Console::parseCommandArgs(std::string command)
 {
-	vkResetCommandPool(context->device, commandPools[imageIndex], 0);
-	VkCommandBufferBeginInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commandBuffers[imageIndex], &info);
+	std::vector<std::string> args = {};
 
-	VkRenderPassBeginInfo passInfo = {};
-	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	passInfo.renderPass = renderPass;
-	passInfo.framebuffer = framebuffers[imageIndex];
-	passInfo.renderArea.extent.width = renderer->extent.width;
-	passInfo.renderArea.extent.height = renderer->extent.height;
-	passInfo.clearValueCount = 0;
-	passInfo.pClearValues = nullptr;
-	vkCmdBeginRenderPass(commandBuffers[imageIndex], &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+	int i = 0;
+	int size = 0;
+	while (i < command.length())
+	{
+		args.push_back(std::string());
+		int j = 0;
+		while (i < command.length())
+		{
+			if (command[i] == ' ' || command[i] == '\n')
+			{
+				i++;
+				break;
+			}
 
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[imageIndex]);
+			args[size].push_back(command[i++]);
+		}
+		size++;
+	}
 
-	vkCmdEndRenderPass(commandBuffers[imageIndex]);
-	vkEndCommandBuffer(commandBuffers[imageIndex]);
-
-	return commandBuffers[imageIndex];
+	return args;
 }
 
-GUI::GUI(Context * context, Renderer * renderer, MessageBus * msgBus)
+long Console::hashCode(std::string command)
+{
+	long hash = 0;
+	long powah = 31;
+	for (int i = 0; i < command.length(); i++)
+		hash = hash * powah + command[i];
+
+	return hash;
+}	
+
+void Console::exit(std::vector<std::string> args)
+{
+	app->sendMessage(Exit);
+}
+
+void Console::addModel(std::vector<std::string> args)
+{
+    if (args.size() != 3)
+        return;
+
+    app->sendMessageNow(AddModel, &args);
+}
+
+LightingTweaker::LightingTweaker()
+{
+
+}
+
+LightingTweaker::~LightingTweaker()
+{
+
+}
+
+void LightingTweaker::init()
+{
+
+}
+
+void LightingTweaker::update(long elapsedTime)
+{
+    app->sendMessage(SetLighting, &this->data);
+}
+
+void LightingTweaker::draw()
+{
+	ImGui::Begin("Lighting Tweaker");
+
+    ImGui::InputFloat3("Direction", (float*)&data.direction);
+    ImGui::ColorEdit4("Ambient", (float*)&data.ambient);
+    ImGui::ColorEdit4("Diffuse", (float*)&data.diffuse);
+    ImGui::ColorEdit4("Specular", (float*)&data.specular);
+
+	ImGui::End();
+}
+
+ModelViewer::ModelViewer()
+{
+
+}
+
+ModelViewer::~ModelViewer()
+{
+
+}
+
+void ModelViewer::init()
+{
+    getModels(nullptr);
+
+    this->setMessageCallback(AddModel, (message_method_t) &ModelViewer::getModels);
+}
+
+void ModelViewer::update(long elapsedTime)
+{
+
+}
+
+void ModelViewer::draw()
+{
+	ImGui::Begin("Model Viewer");
+
+    for (auto & model : this->models)
+    {
+        ImGui::Text("%u %s (%u)\n", model._id, model.name.c_str(), model.instanceCount);
+    }
+
+	ImGui::End();
+}
+
+void ModelViewer::getModels(Message * msg)
+{
+    this->models.clear();
+    app->sendMessageNow(GetModelData, &this->models);
+}
+
+GUI::GUI(DesktopContext * context, DesktopRenderer * renderer, MessageBus * app)
 {
 	this->context = context;
 	this->renderer = renderer;
-	this->msgBus = msgBus;
 
-	// Create imgui context
+	// ===== Create imgui context =====
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
 	ImGui::StyleColorsDark();
 
-	// Create Descriptor Pool specific to imgui
+	// ===== Create Descriptor Pool specific to imgui =====
+
 	VkDescriptorPoolSize pool_sizes[] =
 	{
 		{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
@@ -159,8 +311,48 @@ GUI::GUI(Context * context, Renderer * renderer, MessageBus * msgBus)
 	pool_info.pPoolSizes = pool_sizes;
 	vkCreateDescriptorPool(context->device, &pool_info, nullptr, &descriptorPool);
 
-	// Create render pass for imgui
-	createVkRenderPassOverlay(context->device, renderer->colorFormat, &renderPass);
+	// ===== Create render pass for imgui =====
+
+	VkAttachmentDescription colorAttachment = {};
+	colorAttachment.flags = 0;
+	colorAttachment.format = renderer->colorFormat;
+	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference colorAttachmentRef = {};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.flags = 0;
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.inputAttachmentCount = 0;
+	subpass.pInputAttachments = nullptr;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorAttachmentRef;
+	subpass.pResolveAttachments = nullptr;
+	subpass.pDepthStencilAttachment = nullptr;
+	subpass.preserveAttachmentCount = 0;
+	subpass.pPreserveAttachments = nullptr;
+
+	VkRenderPassCreateInfo renderPassInfo = {};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.pNext = nullptr;
+	renderPassInfo.flags = 0;
+	renderPassInfo.attachmentCount = 1;
+	renderPassInfo.pAttachments = &colorAttachment;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 0;
+	renderPassInfo.pDependencies = nullptr;
+
+	int result = vkCreateRenderPass(context->device, &renderPassInfo, nullptr, &this->renderPass);
+    VALIDATE(result == VK_SUCCESS, "Failed to create ImGUI VkRenderPass");
 
 	// Initialize imgui with renderer objects
 	ImGui_ImplGlfw_InitForVulkan(context->window, true);
@@ -168,8 +360,8 @@ GUI::GUI(Context * context, Renderer * renderer, MessageBus * msgBus)
 	init_info.Instance = context->instance;
 	init_info.PhysicalDevice = context->physicalDevice;
 	init_info.Device = context->device;
-	init_info.QueueFamily = context->graphicsQueue.index;
-	init_info.Queue = context->graphicsQueue.queue;
+	init_info.QueueFamily = context->primaryGraphicsQueue->index;
+	init_info.Queue = context->primaryGraphicsQueue->queue;
 	init_info.PipelineCache = VK_NULL_HANDLE;
 	init_info.DescriptorPool = descriptorPool;
 	init_info.Allocator = nullptr;
@@ -178,43 +370,46 @@ GUI::GUI(Context * context, Renderer * renderer, MessageBus * msgBus)
 	init_info.CheckVkResultFn = nullptr;
 	ImGui_ImplVulkan_Init(&init_info, renderPass);
 
-	commandPools.resize(renderer->length);
-	commandBuffers.resize(renderer->length);
-	framebuffers.resize(renderer->length);
-	for (int i = 0; i < renderer->length; i++)
+    this->framebuffers.resize(renderer->length);
+	for (int i = 0; i < this->framebuffers.size(); i++)
 	{
-		createVkCommandPool(context->device, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, context->graphicsQueue.index, &commandPools[i]);
-		allocateVkCommandBuffers(context->device, nullptr, commandPools[i], VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1, &commandBuffers[i]);
-		createVkFramebuffer(context->device, nullptr, 0, renderPass, nullptr, nullptr, renderer->imageViews[i], renderer->extent.width, renderer->extent.height, 1, &framebuffers[i]);
+        createVkFramebuffer(context->device, nullptr, 0, renderPass, nullptr, nullptr, renderer->imageviews[i], renderer->extent.width, renderer->extent.height, 1, &framebuffers[i]);
 	}
 
 	// Upload Fonts to GPU
-	VkCommandBuffer command_buffer = beginSingleTimeCommands(context);
+	VkCommandBuffer command_buffer = beginSingleTimeCommands(context->device, context->primaryGraphicsQueue->commandPool);
 	ImGui_ImplVulkan_CreateFontsTexture(command_buffer);
-	endSingleTimeCommands(context, command_buffer);
+	endSingleTimeCommands(context->device, context->primaryGraphicsQueue->queue, context->primaryGraphicsQueue->commandPool, command_buffer);
 
-	frameCount = 0;
-	FPS = 0;
-	timeBeforeFPSUpdate = 1000;
+    FPSMeter * fpsmeter = new FPSMeter();
+    Console * console = new Console();
+    LightingTweaker * lightingTweaker = new LightingTweaker();
+    ModelViewer * modelViewer = new ModelViewer();
 
-	buffer[0] = '\0';
-	historyIndex = 0;
+    app->registerSystem(fpsmeter);
+    app->registerSystem(console);
+    app->registerSystem(lightingTweaker);
+    app->registerSystem(modelViewer);
+
+    elements.push_back(fpsmeter);
+    elements.push_back(console);
+    elements.push_back(lightingTweaker);
+    elements.push_back(modelViewer);
 
 	DEBUG("GUI - GUI Created");
 }
 
 GUI::~GUI()
 {
-	vkQueueWaitIdle(context->graphicsQueue.queue);
-	vkQueueWaitIdle(context->presentQueue.queue);
+    for (auto & element : elements)
+        delete element;
+
+    elements.clear();
 
 	for (int i = 0; i < renderer->length; i++)
 		vkDestroyFramebuffer(context->device, framebuffers[i], nullptr);
 
-	for (int i = 0; i < renderer->length; i++)
-		vkDestroyCommandPool(context->device, commandPools[i], nullptr);
-
-	destroyVkRenderPass(context->device, &renderPass);
+	vkDestroyRenderPass(context->device, renderPass, nullptr);
 	vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
 
 	ImGui_ImplVulkan_Shutdown();
@@ -222,4 +417,30 @@ GUI::~GUI()
     ImGui::DestroyContext();
 
 	DEBUG("GUI - GUI Destroyed");
+}
+
+void GUI::draw(VkCommandBuffer commandbuffer)
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+    for (auto & element : elements)
+        element->draw();
+
+    ImGui::Render();
+
+	VkRenderPassBeginInfo passInfo = {};
+	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	passInfo.renderPass = renderPass;
+	passInfo.framebuffer = framebuffers[renderer->currentImageIndex];
+	passInfo.renderArea.extent.width = renderer->extent.width;
+	passInfo.renderArea.extent.height = renderer->extent.height;
+	passInfo.clearValueCount = 0;
+	passInfo.pClearValues = nullptr;
+	vkCmdBeginRenderPass(commandbuffer, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandbuffer);
+
+	vkCmdEndRenderPass(commandbuffer);
 }

@@ -69,12 +69,12 @@ void InputSystem::keyCallback(GLFWwindow * window, int key, int scancode, int ac
 			inputSystem->toggleCursor(window);
 
 		inputSystem->keyCodes[key] = true;
-		inputSystem->msgBus->sendMessage(KeyPress, key);
+		inputSystem->app->sendMessageNow(KeyPress, key);
 	}
 	else if (action == GLFW_RELEASE)
 	{
 		inputSystem->keyCodes[key] = false;
-		inputSystem->msgBus->sendMessage(KeyRelease, key);
+		inputSystem->app->sendMessageNow(KeyRelease, key);
 	}
 }
 
@@ -86,13 +86,13 @@ void InputSystem::cursorPositionCallback(GLFWwindow * window, double xpos, doubl
 	inputSystem->mouseDelta[1] = ypos - inputSystem->mousePosition[1];
 
 	if (glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE && glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
-		inputSystem->msgBus->sendMessageNow(SetMouseDelta, inputSystem->mouseDelta, 2);
+		inputSystem->app->sendMessageNow(SetMouseDelta, inputSystem->mouseDelta, 2);
 
 	inputSystem->mousePosition[0] = xpos;
 	inputSystem->mousePosition[1] = ypos;
 
 	if (glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE)
-		inputSystem->msgBus->sendMessageNow(SetMouseCursor, inputSystem->mousePosition, 2);
+		inputSystem->app->sendMessageNow(SetMouseCursor, inputSystem->mousePosition, 2);
 }
 
 void InputSystem::mouseButtonCallback(GLFWwindow * window, int button, int action, int mods)
@@ -102,12 +102,12 @@ void InputSystem::mouseButtonCallback(GLFWwindow * window, int button, int actio
 	if (action == GLFW_PRESS)
 	{
 		inputSystem->mouseButtonCodes[button] = true;
-		inputSystem->msgBus->sendMessage(MouseButtonPress, button);
+		inputSystem->app->sendMessageNow(MouseButtonPress, button);
 	}
 	else if (action == GLFW_RELEASE)
 	{
 		inputSystem->mouseButtonCodes[button] = false;
-		inputSystem->msgBus->sendMessage(MouseButtonRelease, button);
+		inputSystem->app->sendMessageNow(MouseButtonRelease, button);
 	}
 }
 
@@ -115,5 +115,5 @@ void InputSystem::windowFocusCallback(GLFWwindow* window, int focused)
 {
 	InputSystem * inputSystem = (InputSystem *) glfwGetWindowUserPointer(window);
 
-	inputSystem->msgBus->sendMessage(SetWindowFocus, focused);
+	inputSystem->app->sendMessageNow(SetWindowFocus, focused);
 }

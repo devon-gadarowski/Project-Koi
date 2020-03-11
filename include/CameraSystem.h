@@ -2,7 +2,8 @@
 #ifndef CAMERA_SYSTEM_H
 #define CAMERA_SYSTEM_H
 
-#include <SystemFramework.h>
+#include <system/Log.h>
+#include <system/System.h>
 
 #include <unordered_map>
 

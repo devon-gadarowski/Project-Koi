@@ -2,7 +2,8 @@
 #ifndef INPUT_SYSTEM_H
 #define INPUT_SYSTEM_H
 
-#include <SystemFramework.h>
+#include <system/Log.h>
+#include <system/System.h>
 
 #include <GLFW/glfw3.h>
 

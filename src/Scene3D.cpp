@@ -1,504 +1,268 @@
+#include <render/Scene3D.h>
+#include <render/Utilities.h>
 
-#include <RenderFramework.h>
+#include <cstring>
 
-#define GLM_FORCE_RADIANS
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-#include <chrono>
-
-using namespace RenderFramework;
-
-void Scene3D::updateUBO(uint32_t imageIndex)
+void Scene3D::init()
 {
-	glm::mat4 view = glm::lookAt(
-		glm::vec3(camera.position.x, camera.position.y, camera.position.z),
-		glm::vec3(camera.position.x + camera.direction.x, camera.position.y + camera.direction.y, camera.position.z + camera.direction.z),
-		glm::vec3(camera.up.x, camera.up.y, camera.up.z)
-	);
+    app->registerSystem(&camera);
+    //this->models.push_back(new TexturedModel("ada1.obj", "assets/meshes/ada1/", context, renderer, this));
 
-	glm::mat4 proj = glm::perspective(glm::radians(45.0f), renderer->extent.width / (float) renderer->extent.height, 0.1f, 50.0f);
-
-	proj[1][1] *= -1;
-
-	for (int i = 0; i < 4; i++)
-	{
-		for (int j = 0; j < 4; j++)
-		{
-			ubo.view[i][j] = view[i][j];
-			ubo.proj[i][j] = proj[i][j];
-		}
-	}
-
-	void* data;
-	vkMapMemory(context->device, uniformBuffersMemory[imageIndex], 0, sizeof(ubo), 0, &data);
-	memcpy(data, &ubo, sizeof(ubo));
-	vkUnmapMemory(context->device, uniformBuffersMemory[imageIndex]);
+    setMessageCallback(SetLighting, (message_method_t) &Scene3D::updateLighting);
+    setMessageCallback(GetModelData, (message_method_t) &Scene3D::getModelData);
+    setMessageCallback(AddModel, (message_method_t) &Scene3D::addModel);
 }
 
-VkCommandBuffer Scene3D::getFrame(uint32_t imageIndex)
+void Scene3D::update(long elapsedTime)
 {
-	return commandBuffers[imageIndex];
+    //this->camera.updateBuffer();
 }
 
-Scene3D::Scene3D(Context * context, Renderer * renderer, std::string filename)
+void Scene3D::draw(VkCommandBuffer commandbuffer)
 {
-	this->context = context;
-	this->renderer = renderer;
+    VkClearValue clearColors[3];
+    clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    clearColors[1].depthStencil = {1.0f, 0};
+    clearColors[2].color = {0.0f, 0.0f, 0.0f, 1.0f};
 
-	try
+    VkRenderPassBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    beginInfo.pNext = nullptr;
+    beginInfo.renderPass = this->renderPass;
+    beginInfo.framebuffer = this->framebuffers[renderer->currentImageIndex];
+    beginInfo.renderArea.offset = {0, 0};
+    beginInfo.renderArea.extent = renderer->extent;
+    beginInfo.clearValueCount = 3;
+    beginInfo.pClearValues = clearColors;
+
+    vkCmdBeginRenderPass(commandbuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    for (auto& model : models)
+    {
+        model->draw(commandbuffer);
+    }
+
+    vkCmdEndRenderPass(commandbuffer);
+}
+
+Scene3D::Scene3D(Context * context, Renderer * renderer)
+{
+    this->context = context;
+    this->renderer = renderer;
+
+    // ===== Create Uniform Buffers =====
+
+    camera.extent = renderer->extent;
+
+    camera.buffers.resize(2);
+	for (int i = 0; i < camera.buffers.size(); i++)
 	{
-		RenderFramework::loadSceneModels(filename, &models);
-	}
-	catch (int e)
-	{
-		throw;
-	}
+		createBuffer(context, sizeof(CameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &camera.buffers[i].buffer, &camera.buffers[i].memory);
 
-	for (auto& model : models)
-	{
-		// Create Vertex/Index/Instance Buffers
-		for (auto& mesh : model.shapes)
-			RenderFramework::createMeshBuffers(context, &mesh);
-
-		RenderFramework::createInstanceBuffer(context, model.instances, &model.instanceBuffer, &model.instanceMemory, &model.instanceBufferSize);
-
-		// Load Textures
-		for (auto& material : model.materials)
-		{
-			material.ka   = loadMeshTexture(context, renderer, &material.ambientTexture);
-			material.kd   = loadMeshTexture(context, renderer, &material.diffuseTexture);
-			material.ks   = loadMeshTexture(context, renderer, &material.specularTexture);
-			material.norm = loadMeshTexture(context, renderer, &material.normalTexture);
-
-			createBuffer(context, sizeof(Material) - offsetof(Material, ambient), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			             &material.buffer, &material.bufferMemory);
-
-			DEBUG("Sanity Check: %lu, %lu, %lu", sizeof(Material), offsetof(Material, ambient), (unsigned long) (&material.ambient) - (unsigned long)(&material));
-
-			void * data;
-			vkMapMemory(context->device, material.bufferMemory, 0, sizeof(Material) - offsetof(Material, ambient), 0, &data);
-			memcpy(data, &material.ambient, sizeof(Material) - offsetof(Material, ambient));
-			vkUnmapMemory(context->device, material.bufferMemory);
-		}
-	}
-	// Load Shaders
-	RenderFramework::createShaderModule(context, "bin/vert.spv", &vertexShader);
-	RenderFramework::createShaderModule(context, "bin/frag.spv", &fragmentShader);
-
-	createMeshTextureSampler(context->device, &textureSampler);
-
-	// Create Uniform Buffers
-	uniformBuffers.resize(renderer->length);
-	uniformBuffersMemory.resize(renderer->length);
-	for (int i = 0; i < uniformBuffers.size(); i++)
-	{
-		createBuffer(context, sizeof(UBO), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &uniformBuffers[i], &uniformBuffersMemory[i]);
+        vkMapMemory(context->device, camera.buffers[i].memory, 0, sizeof(CameraData), 0, &camera.buffers[i].data);
+        memcpy(camera.buffers[i].data, &camera.data, sizeof(CameraData));
 	}
 
-	// Create Descriptors
-	setupDescriptors();
+    light.buffers.resize(2);
+	for (int i = 0; i < light.buffers.size(); i++)
+	{
+		createBuffer(context, sizeof(DirectionalLightData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &light.buffers[i].buffer, &light.buffers[i].memory);
 
-	// Create Pipeline
-	createPipeline();
-	recordCommands();
+        vkMapMemory(context->device, light.buffers[i].memory, 0, sizeof(DirectionalLightData), 0, &light.buffers[i].data);
+        memcpy(light.buffers[i].data, &light.data, sizeof(DirectionalLightData));
+	}   
 
-	DEBUG("SCENE3D - Scene Created %s", filename.c_str());
+    // ===== Create VkDescriptorPool =====
+
+    VkDescriptorPoolSize poolSize = {};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = renderer->length * 2;
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.pNext = nullptr;
+    poolInfo.flags = 0;
+    poolInfo.maxSets = renderer->length;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+
+    int result = vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &this->descriptorPool);
+    VALIDATE(result == VK_SUCCESS, "Failed to create VkDescriptorPool %d", result);
+
+    // ===== Create VkDescriptorSets =====
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+    bindings[0] = camera.getVkDescriptorSetLayoutBinding(0);
+    bindings[1] = light.getVkDescriptorSetLayoutBinding(1);
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.pNext = nullptr;
+    layoutInfo.flags = 0;
+    layoutInfo.bindingCount = bindings.size();
+    layoutInfo.pBindings = bindings.data();
+
+    result = vkCreateDescriptorSetLayout(context->device, &layoutInfo, nullptr, &this->descriptorSetLayout);
+    VALIDATE(result == VK_SUCCESS, "Failed to create VkDescriptorSetLayout %d", result);
+
+    std::vector<VkDescriptorSetLayout> layouts(renderer->length, this->descriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.pNext = nullptr;
+    allocInfo.descriptorPool = this->descriptorPool;
+    allocInfo.descriptorSetCount = layouts.size();
+    allocInfo.pSetLayouts = layouts.data();
+
+    this->descriptorSets.resize(renderer->length);
+    result = vkAllocateDescriptorSets(context->device, &allocInfo, this->descriptorSets.data());
+    VALIDATE(result == VK_SUCCESS, "Failed to allocate VkDescriptorSets %d", result);
+
+    std::vector<VkWriteDescriptorSet> descriptorWrites(renderer->length * 2);
+
+    for (uint32_t i = 0; i < this->descriptorSets.size(); i++)
+    {
+        VkDescriptorBufferInfo bufferInfo1 = {};
+        bufferInfo1.buffer = camera.buffers[i % camera.buffers.size()].buffer;
+        bufferInfo1.offset = 0;
+        bufferInfo1.range = sizeof(CameraData);
+
+        VkDescriptorBufferInfo bufferInfo2 = {};
+        bufferInfo2.buffer = light.buffers[i % light.buffers.size()].buffer;
+        bufferInfo2.offset = 0;
+        bufferInfo2.range = sizeof(DirectionalLightData);
+
+        descriptorWrites[2*i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2*i].dstSet = this->descriptorSets[i];
+        descriptorWrites[2*i].dstBinding = 0;
+        descriptorWrites[2*i].dstArrayElement = 0;
+        descriptorWrites[2*i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[2*i].descriptorCount = 1;
+        descriptorWrites[2*i].pBufferInfo = &bufferInfo1;
+        descriptorWrites[2*i].pImageInfo = nullptr;
+        descriptorWrites[2*i].pTexelBufferView = nullptr;
+
+            
+        descriptorWrites[2*i+1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2*i+1].dstSet = this->descriptorSets[i];
+        descriptorWrites[2*i+1].dstBinding = 1;
+        descriptorWrites[2*i+1].dstArrayElement = 0;
+        descriptorWrites[2*i+1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[2*i+1].descriptorCount = 1;
+        descriptorWrites[2*i+1].pBufferInfo = &bufferInfo2;
+        descriptorWrites[2*i+1].pImageInfo = nullptr;
+        descriptorWrites[2*i+1].pTexelBufferView = nullptr;
+    }
+
+    vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+
+    // ===== Create VkRenderPass =====
+
+    this->renderPass = createVkRenderPass(context->device, renderer->colorFormat, renderer->depthFormat, renderer->sample_count);
+
+    // ===== Create VkFramebuffers =====
+
+    framebuffers.resize(renderer->length);
+
+    for (uint32_t i = 0; i < framebuffers.size(); i++)
+    {
+        framebuffers[i] = createVkFramebuffer(context->device, nullptr, 0, this->renderPass, renderer->colorImageView, renderer->depthImageView, renderer->imageviews[i], renderer->extent.width, renderer->extent.height, 1);
+    }
+
+    DEBUG("SCENE3D - Scene Created");
 }
 
 Scene3D::~Scene3D()
 {
-	vkQueueWaitIdle(context->graphicsQueue.queue);
-	vkQueueWaitIdle(context->presentQueue.queue);
+    // TODO: Cleanup
 
-	vkFreeCommandBuffers(context->device, context->graphicsCommandPool, renderer->length, commandBuffers.data());
+    for (int i = 0; i < camera.buffers.size(); i++)
+    {
+        vkUnmapMemory(context->device, camera.buffers[i].memory);
+        vkDestroyBuffer(context->device, camera.buffers[i].buffer, nullptr);
+        vkFreeMemory(context->device, camera.buffers[i].memory, nullptr);
+    }
 
-	vkDestroyPipeline(context->device, graphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(context->device, pipelineLayout, nullptr);
+    for (int i = 0; i < light.buffers.size(); i++)
+    {
+        vkUnmapMemory(context->device, light.buffers[i].memory);
+        vkDestroyBuffer(context->device, light.buffers[i].buffer, nullptr);
+        vkFreeMemory(context->device, light.buffers[i].memory, nullptr);
+    }
 
-	for (int i = 0; i < uniformBuffers.size(); i++)
-	{
-		vkDestroyBuffer(context->device, uniformBuffers[i], nullptr);
-		vkFreeMemory(context->device, uniformBuffersMemory[i], nullptr);
-	}
+    for (auto & framebuffer : this->framebuffers)
+        vkDestroyFramebuffer(context->device, framebuffer, nullptr);
 
-	vkDestroyDescriptorSetLayout(context->device, cameraDescriptorSetLayout, nullptr);
-	vkDestroyDescriptorSetLayout(context->device, materialDescriptorSetLayout, nullptr);
+    vkDestroyRenderPass(context->device, this->renderPass, nullptr);
 
-	vkDestroySampler(context->device, textureSampler, nullptr);
+    vkDestroyDescriptorSetLayout(context->device, descriptorSetLayout, nullptr);
+    vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
 
-	for (auto& model : models)
-	{
-		vkDestroyBuffer(context->device, model.instanceBuffer, nullptr);
-		vkFreeMemory(context->device, model.instanceMemory, nullptr);
+    for (auto& model : models)
+        delete model;
 
-		for (auto& mesh : model.shapes)
-		{
-			vkDestroyBuffer(context->device, mesh.vertexBuffer, nullptr);
-			vkFreeMemory(context->device, mesh.vertexMemory, nullptr);
-
-			vkDestroyBuffer(context->device, mesh.indexBuffer, nullptr);
-			vkFreeMemory(context->device, mesh.indexMemory, nullptr);
-		}
-
-		for (auto& material : model.materials)
-		{
-			vkDestroyDescriptorPool(context->device, material.descriptorPool, nullptr);
-
-			vkDestroyBuffer(context->device, material.buffer, nullptr);
-			vkFreeMemory(context->device, material.bufferMemory, nullptr);
-
-			vkDestroyImage(context->device, material.diffuseTexture.image, nullptr);
-			vkFreeMemory(context->device, material.diffuseTexture.memory, nullptr);
-			vkDestroyImageView(context->device, material.diffuseTexture.imageView, nullptr);
-		}
-	}
-
-	vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
-
-	vkDestroyShaderModule(context->device, vertexShader, nullptr);
-	vkDestroyShaderModule(context->device, fragmentShader, nullptr);
-
-	DEBUG("SCENE3D - Scene Destroyed");
+    DEBUG("SCENE3D - Scene Destroyed");
 }
 
-void Scene3D::getVertexInputDescriptions(std::vector<VkVertexInputBindingDescription> * bindingDesc,
-                                         std::vector<VkVertexInputAttributeDescription> * attribDesc)
+VkDescriptorSetLayoutBinding Camera::getVkDescriptorSetLayoutBinding(uint32_t binding)
 {
-	bindingDesc->emplace_back();
-	bindingDesc->back().binding = 0;
-	bindingDesc->back().stride = sizeof(Vertex);
-	bindingDesc->back().inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	Vertex::getAttributeDescriptions(0, attribDesc);
+    VkDescriptorSetLayoutBinding layoutBinding = {};
+    layoutBinding.binding = binding;
+    layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layoutBinding.descriptorCount = 1;
+    layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    layoutBinding.pImmutableSamplers = nullptr;
 
-	bindingDesc->emplace_back();
-	bindingDesc->back().binding = 1;
-	bindingDesc->back().stride = sizeof(Instance);
-	bindingDesc->back().inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-	Instance::getAttributeDescriptions(1, attribDesc);
+    return layoutBinding;
 }
 
-void Scene3D::setupDescriptors()
+VkDescriptorSetLayoutBinding DirectionalLight::getVkDescriptorSetLayoutBinding(uint32_t binding)
 {
-	std::vector<VkDescriptorSetLayoutBinding> bindings(1);
-	bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-	createVkDescriptorSetLayout(context->device, bindings, &cameraDescriptorSetLayout);
+    VkDescriptorSetLayoutBinding layoutBinding = {};
+    layoutBinding.binding = binding;
+    layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layoutBinding.descriptorCount = 1;
+    layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    layoutBinding.pImmutableSamplers = nullptr;
 
-	createVkDescriptorPool(context->device, bindings, renderer->length, &descriptorPool);
-
-	std::vector<VkDescriptorSetLayout> layouts(renderer->length);
-	for (auto& layout : layouts)
-		layout = cameraDescriptorSetLayout;
-
-	allocateVkDescriptorSets(context->device, descriptorPool, layouts, &descriptorSets);
-	uniformBuffers.resize(renderer->length);
-
-	bindings.resize(2);
-	bindings[0] = getDescriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-	bindings[1] = getDescriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-	createVkDescriptorSetLayout(context->device, bindings, &materialDescriptorSetLayout);
-
-	for (auto& model : models)
-	{
-		for (auto& material : model.materials)
-		{
-			createVkDescriptorPool(context->device, bindings, renderer->length, &material.descriptorPool);
-
-			material.descriptorSets.resize(renderer->length);
-			std::vector<VkDescriptorSetLayout> layouts(renderer->length);
-			for (auto& layout : layouts)
-				layout = materialDescriptorSetLayout;
-
-			allocateVkDescriptorSets(context->device, material.descriptorPool, layouts, &material.descriptorSets);
-		}
-	}
-
-	for (int i = 0; i < renderer->length; i++)
-	{
-		VkDescriptorBufferInfo bufferInfo = {};
-		bufferInfo.buffer = uniformBuffers[i];
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(UBO);
-
-		std::vector<VkWriteDescriptorSet> descriptorWrites(1);
-
-		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[0].dstSet = descriptorSets[i];
-		descriptorWrites[0].dstBinding = 0;
-		descriptorWrites[0].dstArrayElement = 0;
-		descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrites[0].descriptorCount = 1;
-		descriptorWrites[0].pBufferInfo = &bufferInfo;
-		descriptorWrites[0].pImageInfo = nullptr;
-		descriptorWrites[0].pTexelBufferView = nullptr;
-
-		vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-
-		for (auto& model : models)
-		{
-			for (auto& material : model.materials)
-			{
-				std::vector<VkWriteDescriptorSet> descriptorWrites(2);
-
-				VkDescriptorBufferInfo bufferInfo = {};
-				bufferInfo.buffer = material.buffer;
-				bufferInfo.offset = 0;
-				bufferInfo.range = sizeof(Material) - offsetof(Material, ambient);
-
-				descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				descriptorWrites[0].dstSet = material.descriptorSets[i];
-				descriptorWrites[0].dstBinding = 0;
-				descriptorWrites[0].dstArrayElement = 0;
-				descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-				descriptorWrites[0].descriptorCount = 1;
-				descriptorWrites[0].pBufferInfo = &bufferInfo;
-				descriptorWrites[0].pImageInfo = nullptr;
-				descriptorWrites[0].pTexelBufferView = nullptr;
-
-				VkDescriptorImageInfo info = {};
-				info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				info.imageView = material.diffuseTexture.imageView;
-				info.sampler = textureSampler;
-
-				descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				descriptorWrites[1].dstSet = material.descriptorSets[i];
-				descriptorWrites[1].dstBinding = 1;
-				descriptorWrites[1].dstArrayElement = 0;
-				descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				descriptorWrites[1].descriptorCount = 1;
-				descriptorWrites[1].pBufferInfo = nullptr;
-				descriptorWrites[1].pImageInfo = &info;
-				descriptorWrites[1].pTexelBufferView = nullptr;
-
-				vkUpdateDescriptorSets(context->device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-			}
-		}
-	}
+    return layoutBinding;
 }
 
-void Scene3D::createPipeline()
+void Scene3D::updateLighting(Message * msg)
 {
-	VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
-	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = vertexShader;
-	vertShaderStageInfo.pName = "main";
+    DirectionalLightData * data = (DirectionalLightData *) (dynamic_cast<PointerMessage *> (msg))->data;
 
-	VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
-	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragShaderStageInfo.module = fragmentShader;
-	fragShaderStageInfo.pName = "main";
+    this->light.data = *data;
 
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {vertShaderStageInfo, fragShaderStageInfo};
-
-	std::vector<VkVertexInputBindingDescription> binding;
-	std::vector<VkVertexInputAttributeDescription> attribute;
-
-	getVertexInputDescriptions(&binding, &attribute);
-
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
-	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputInfo.vertexBindingDescriptionCount = binding.size();
-	vertexInputInfo.pVertexBindingDescriptions = binding.data();
-	vertexInputInfo.vertexAttributeDescriptionCount = attribute.size();
-	vertexInputInfo.pVertexAttributeDescriptions = attribute.data();
-
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
-	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-	VkViewport viewport = {};
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
-	viewport.width = renderer->extent.width;
-	viewport.height = renderer->extent.height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-
-	VkRect2D scissor = {};
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = renderer->extent.width;
-	scissor.extent.height = renderer->extent.height;
-
-	VkPipelineViewportStateCreateInfo viewportState = {};
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.viewportCount = 1;
-	viewportState.pViewports = &viewport;
-	viewportState.scissorCount = 1;
-	viewportState.pScissors = &scissor;
-
-	VkPipelineRasterizationStateCreateInfo rasterizer = {};
-	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterizer.depthClampEnable = VK_FALSE; // Enable for VR
-	rasterizer.rasterizerDiscardEnable = VK_FALSE;
-	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterizer.lineWidth = 1.0f;
-	rasterizer.cullMode = VK_CULL_MODE_NONE;
-	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-	rasterizer.depthBiasEnable = VK_FALSE;
-	rasterizer.depthBiasConstantFactor = 0.0f;
-	rasterizer.depthBiasClamp = 0.0f;
-	rasterizer.depthBiasSlopeFactor = 0.0f;
-
-	VkPipelineMultisampleStateCreateInfo multisampling = {};
-	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisampling.sampleShadingEnable = VK_FALSE;
-	multisampling.rasterizationSamples = SAMPLE_COUNT;
-	multisampling.minSampleShading = 1.0f;
-	multisampling.pSampleMask = nullptr;
-	multisampling.alphaToCoverageEnable = VK_FALSE;
-	multisampling.alphaToOneEnable = VK_FALSE;
-
-	VkPipelineDepthStencilStateCreateInfo depthStencil = {};
-	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthStencil.depthTestEnable = VK_TRUE;
-	depthStencil.depthWriteEnable = VK_TRUE;
-	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-	depthStencil.depthBoundsTestEnable = VK_FALSE;
-	depthStencil.minDepthBounds = 0.0f;
-	depthStencil.maxDepthBounds = 1.0f;
-	depthStencil.stencilTestEnable = VK_FALSE;
-	depthStencil.front = {};
-	depthStencil.back = {};
-
-	std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
-	for (int i = 0; i < renderer->framebuffers.size(); i++)
-	{
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-											VK_COLOR_COMPONENT_G_BIT |
-											VK_COLOR_COMPONENT_B_BIT |
-											VK_COLOR_COMPONENT_A_BIT;
-		colorBlendAttachment.blendEnable = VK_TRUE;
-		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-		colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-		colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-		colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-		colorBlendAttachments.push_back(colorBlendAttachment);
-	}
-
-	VkPipelineColorBlendStateCreateInfo colorBlending = {};
-	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlending.logicOpEnable = VK_FALSE;
-	colorBlending.logicOp = VK_LOGIC_OP_COPY;
-	colorBlending.attachmentCount = colorBlendAttachments.size();
-	colorBlending.pAttachments = colorBlendAttachments.data();
-	colorBlending.blendConstants[0] = 0.0f;
-	colorBlending.blendConstants[1] = 0.0f;
-	colorBlending.blendConstants[2] = 0.0f;
-	colorBlending.blendConstants[3] = 0.0f;
-
-	VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, materialDescriptorSetLayout};
-
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = 2;
-	pipelineLayoutInfo.pSetLayouts = layouts;
-	pipelineLayoutInfo.pushConstantRangeCount = 0;
-	pipelineLayoutInfo.pPushConstantRanges = nullptr;
-
-	int result = vkCreatePipelineLayout(context->device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
-	if (result != VK_SUCCESS)
-	{
-		PANIC("SCENE3D - Failed to create pipeline layout %d", result);
-	}
-
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.stageCount = shaderStages.size();
-	pipelineInfo.pStages = shaderStages.data();
-	pipelineInfo.pVertexInputState = &vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &rasterizer;
-	pipelineInfo.pMultisampleState = &multisampling;
-	pipelineInfo.pDepthStencilState = &depthStencil;
-	pipelineInfo.pColorBlendState = &colorBlending;
-	pipelineInfo.pDynamicState = nullptr;
-	pipelineInfo.layout = pipelineLayout;
-	pipelineInfo.renderPass = renderer->renderPass;
-	pipelineInfo.subpass = 0;
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-	pipelineInfo.basePipelineIndex = -1;
-
-	result = vkCreateGraphicsPipelines(context->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline);
-	if(result != VK_SUCCESS)
-	{
-		PANIC("SCENE3D - Failed to create graphics pipeline %d", result);
-	}
+    memcpy(this->light.buffers[renderer->currentImageIndex % this->light.buffers.size()].data, &this->light.data, sizeof(DirectionalLightData));
 }
 
-void Scene3D::recordCommands()
+void Scene3D::addModel(Message * msg)
 {
-	commandBuffers.resize(renderer->length);
-	allocateVkCommandBuffers(context->device, nullptr, context->graphicsCommandPool,
-	                         VK_COMMAND_BUFFER_LEVEL_PRIMARY, renderer->length, commandBuffers.data());
+    std::vector<std::string> * args = (std::vector<std::string> *) (dynamic_cast<PointerMessage *> (msg))->data;
 
-	for (size_t i = 0; i < renderer->length; i++)
-	{
-		VkCommandBufferBeginInfo beginInfo = {};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = 0;
-		beginInfo.pInheritanceInfo = nullptr;
+    try
+    {
+        this->models.push_back(new TexturedModel((*args)[1], (*args)[2], context, renderer, this));
+    }
+    catch(const std::exception& e)
+    {
+        WARN("Failed to load model %s", (*args)[1].c_str());
+    }
+    
+}
 
-		int result = vkBeginCommandBuffer(commandBuffers[i], &beginInfo);
-		if (result != VK_SUCCESS)
-		{
-			PANIC("SCENE3D - Failed to begin recording graphics command buffer! %d", result);
-		}
+void Scene3D::getModelData(Message * msg)
+{
+    std::vector<ModelData> * models = (std::vector<ModelData> *) (dynamic_cast<PointerMessage *> (msg))->data;
 
-		VkClearValue clearColors[3];
-		clearColors[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-		clearColors[1].depthStencil = {1.0f, 0};
-		clearColors[2].color = {0.0f, 0.0f, 0.0f, 1.0f};
-
-		VkRenderPassBeginInfo renderPassInfo = {};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = renderer->renderPass;
-		renderPassInfo.framebuffer = renderer->framebuffers[i];
-		renderPassInfo.renderArea.offset = {0, 0};
-		renderPassInfo.renderArea.extent.width = renderer->extent.width;
-		renderPassInfo.renderArea.extent.height = renderer->extent.height;
-		renderPassInfo.clearValueCount = 3;
-		renderPassInfo.pClearValues = clearColors;
-
-		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-		vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
-
-		for (auto& model : models)
-		{
-			for (auto& mesh : model.shapes)
-			{
-				DEBUG("SANITY CHECK: materials_count=%lu, materialID=%d", model.materials.size(), mesh.materialID);
-
-				VkDescriptorSet descriptors[] = {descriptorSets[i], model.materials[mesh.materialID].descriptorSets[i]};
-				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptors, 0, nullptr);
-
-				VkBuffer vertexBuffers[] = {mesh.vertexBuffer, model.instanceBuffer};
-				VkDeviceSize offsets[] = {0, 0};
-				vkCmdBindVertexBuffers(commandBuffers[i], 0, 2, vertexBuffers, offsets);
-				vkCmdBindIndexBuffer(commandBuffers[i], mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-				vkCmdDrawIndexed(commandBuffers[i], mesh.indices.size(), model.instances.size(), 0, 0, 0);
-			}
-		}
-
-		vkCmdEndRenderPass(commandBuffers[i]);
-
-		result = vkEndCommandBuffer(commandBuffers[i]);
-		if (result != VK_SUCCESS)
-		{
-			PANIC("SCENE3D - Failed to record graphics command buffer %d", result);
-		}
-	}
+    for (int i = 0; i < this->models.size(); i++)
+    {
+        ModelData m = {(uint32_t) i, this->models[i]->name, (uint32_t) this->models[i]->instances.size()};
+        models->push_back(m);
+    }
 }

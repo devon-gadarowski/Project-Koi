@@ -4,127 +4,52 @@
 #include <ios>
 #include <cmath>
 
-void RenderSystem::update(long elapsedTime)
+void RenderSystem::init()
 {
-	glfwPollEvents();
-	if (glfwWindowShouldClose(context->window))
-	{
-		msgBus->sendMessageNow(Shutdown);
-	}
+	context = new DesktopContext();
+	app->registerSystem(context);
 
-	if (paused)
-		return;
+	renderer = new DesktopRenderer(context);
+	app->registerSystem(renderer);
 
-	if (!sceneLoaded)
-	{
-		std::string defaultScene("porsche.json");
-		msgBus->sendMessageNow(LoadScene, defaultScene);
-		return;
-	}
+	scene = new Scene3D(context, renderer);
+	app->registerSystem(scene);
 
-	uint32_t imageIndex = renderer->getNextImage();
+	gui = new GUI(context, renderer, app);
 
-	std::vector<VkCommandBuffer> commandBuffers;
-
-	scene->updateUBO(imageIndex);
-	gui->update(elapsedTime);
-	
-	commandBuffers.push_back(scene->getFrame(imageIndex));
-	commandBuffers.push_back(gui->getFrame(imageIndex));
-
-	renderer->render(imageIndex, commandBuffers);
-	renderer->present(imageIndex);
-}
-
-RenderSystem::RenderSystem()
-{
-	DEBUG("RENDER_SYSTEM - RenderSystem Created");
+	//gui = new RenderFramework::GUI(context, renderer, parent);
 
 	// Register Message Actions
-	setMessageCallback(LoadScene, (message_method_t) &RenderSystem::loadScene);
 	setMessageCallback(SetWindowFocus, (message_method_t) &RenderSystem::onWindowFocus);
 	setMessageCallback(KeyPress, (message_method_t) &RenderSystem::onKeyPress);
-	setMessageCallback(SetCameraPosition, (message_method_t) &RenderSystem::onCameraPositionUpdate);
-	setMessageCallback(SetCameraDirection, (message_method_t) &RenderSystem::onCameraDirectionUpdate);
+
+	DEBUG("RENDER_SYSTEM - RenderSystem Created");
+}
+
+void RenderSystem::update(long elapsedTime)
+{
+
+}
+
+void RenderSystem::draw()
+{
+	VkCommandBuffer drawBuffer = renderer->getNextCommandBuffer();
+	scene->draw(drawBuffer);
+	gui->draw(drawBuffer);
+	renderer->render(drawBuffer);
+	renderer->present();
 }
 
 RenderSystem::~RenderSystem()
 {
-	shutdown();
+	vkQueueWaitIdle(context->primaryGraphicsQueue->queue);
+	
+	delete gui;
+	delete scene;
+	delete renderer;
+	delete context;
 
 	DEBUG("RENDER_SYSTEM - RenderSystem Destroyed");
-}
-
-void RenderSystem::init()
-{
-	if (initialized)
-		return;
-
-	context = new RenderFramework::Context();
-	msgBus->sendMessageNow(GLFWwindowCreated, (void *) context->window);
-
-	renderer = new RenderFramework::Renderer(context);
-	gui = new RenderFramework::GUI(context, renderer, msgBus);
-
-	initialized = true;
-}
-
-void RenderSystem::shutdown()
-{
-	paused = true;
-
-	stopScene();
-
-	if (initialized)
-	{
-		initialized = false;
-		delete gui;
-		delete renderer;
-		delete context;
-	}
-
-	scene = nullptr;
-	gui = nullptr;
-	renderer = nullptr;
-	context = nullptr;
-}
-
-void RenderSystem::loadScene(Message * msg)
-{
-	StringMessage * strmsg = dynamic_cast<StringMessage *> (msg);
-
-	try
-	{
-		std::string sceneName = strmsg->data;
-
-		DEBUG("Scene name: %s", sceneName.c_str());
-
-		RenderFramework::Scene3D * newScene = new RenderFramework::Scene3D(context, renderer, sceneName);
-
-		if (sceneLoaded)
-			stopScene();
-
-		this->scene = newScene;
-		sceneLoaded = true;
-
-		msgBus->sendMessage(SceneLoaded, scene);
-	}
-	catch (int e)
-	{
-		WARN("RENDER_SYSTEM - Failed to load scence %s", strmsg->data.c_str());
-	}
-}
-
-void RenderSystem::stopScene()
-{
-	if (sceneLoaded)
-	{
-		sceneLoaded = false;
-		delete scene;
-	}
-
-	scene = nullptr;
-	msgBus->sendMessage(SceneDestroyed);
 }
 
 void RenderSystem::onKeyPress(Message * msg)
@@ -136,28 +61,4 @@ void RenderSystem::onWindowFocus(Message * msg)
 {
 	IntegerMessage * intmsg = dynamic_cast<IntegerMessage *> (msg);
 	paused = intmsg->data == 0;
-}
-
-void RenderSystem::onCameraPositionUpdate(Message * msg)
-{
-	if (!sceneLoaded)
-		return;
-
-	VectorMessage * position = dynamic_cast<VectorMessage *> (msg);
-
-	scene->camera.position.x = position->data[0];
-	scene->camera.position.y = position->data[1];
-	scene->camera.position.z = position->data[2];
-}
-
-void RenderSystem::onCameraDirectionUpdate(Message * msg)
-{
-	if (!sceneLoaded)
-		return;
-
-	VectorMessage * direction = dynamic_cast<VectorMessage *> (msg);
-
-	scene->camera.direction.x = direction->data[0];
-	scene->camera.direction.y = direction->data[1];
-	scene->camera.direction.z = direction->data[2];
 }

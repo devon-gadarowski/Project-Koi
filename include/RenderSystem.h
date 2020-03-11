@@ -2,30 +2,32 @@
 #ifndef RENDER_SYSTEM_H
 #define RENDER_SYSTEM_H
 
-#include <SystemFramework.h>
-#include <RenderFramework.h>
+#include <system/Log.h>
+#include <system/System.h>
+
+#include <render/DesktopContext.h>
+#include <render/DesktopRenderer.h>
+#include <render/Scene3D.h>
+#include <render/GUI.h>
 
 class RenderSystem : public System
 {
 	public:
+		void init();
 		void update(long elapsedTime);
 
-		RenderSystem();
+		void draw();
+
+		RenderSystem() {}
 		~RenderSystem();
 
 	private:
-		RenderFramework::Context * context;
-		RenderFramework::Renderer * renderer;
-		RenderFramework::Scene3D * scene;
-		RenderFramework::GUI * gui;
+		DesktopContext * context;
+		DesktopRenderer * renderer;
+		Scene * scene;
+		GUI * gui;
 
-		bool initialized = false;
-		bool sceneLoaded = false;
-		bool paused = false;
-
-		void init();
-		void shutdown();
-		void stopScene();
+		bool paused = true;
 
 		void loadScene(Message * msg);
 		void onKeyPress(Message * msg);

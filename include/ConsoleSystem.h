@@ -2,7 +2,8 @@
 #ifndef CONSOLE_SYSTEM_H
 #define CONSOLE_SYSTEM_H
 
-#include <SystemFramework.h>
+#include <system/Log.h>
+#include <system/System.h>
 
 #include <thread>
 

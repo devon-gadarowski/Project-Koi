@@ -5,11 +5,10 @@ BIN = bin
 SRC = src
 INCLUDE = include
 
-LIBRARIES = -L$(VULKAN_SDK)/lib `pkg-config --static --libs glfw3` -lvulkan
+LIBRARIES = -L$(VULKAN_SDK)/lib  -lvulkan `pkg-config --static --libs glfw3`
 EXECUTABLE = ProjectKoi
 
-3RD_PARTY_SRC = $(SRC)/3rd_party
-3RD_PARTY_INCLUDE = $(INCLUDE)/3rd_party
+3RD_PARTY = 3rd_party
 
 VULKAN_INCLUDE = $(VULKAN_SDK)/include
 
@@ -21,8 +20,8 @@ run: all
 	clear
 	./$(BIN)/$(EXECUTABLE)
 
-$(BIN)/$(EXECUTABLE): $(SRC)/*.cpp $(3RD_PARTY_SRC)/*.cpp $(3RD_PARTY_SRC)/*.c
-	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -I$(3RD_PARTY_INCLUDE) -I$(VULKAN_INCLUDE) $^ -o $@ $(LIBRARIES)
+$(BIN)/$(EXECUTABLE): $(SRC)/*.cpp $(3RD_PARTY)/dds/*.c $(3RD_PARTY)/imgui/*.cpp
+	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -I$(3RD_PARTY) -I$(VULKAN_INCLUDE) $^ -o $@ $(LIBRARIES)
 
 clean:
 	rm -f $(BIN)/$(EXECUTABLE)

@@ -25,7 +25,9 @@ enum MessageType
 	SetWindowFocus,
 	SetCameraPosition,
 	SetCameraDirection,
-	ProcessCommand
+	SetLighting,
+	GetModelData,
+	AddModel
 };
 
 class Message

@@ -2,9 +2,6 @@
 # Ignore Model Data
 /assets/meshes/
 
-# Ignore VSCode Data
-/.vscode/
-
 # Ignore Build
 /bin/
 
