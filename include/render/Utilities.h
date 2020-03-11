@@ -25,11 +25,12 @@ VkRenderPass createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat 
 VkFramebuffer createVkFramebuffer(VkDevice device, const void * pNext, VkFramebufferCreateFlags flags, VkRenderPass renderPass, VkImageView colorImageView, VkImageView depthImageView, VkImageView swapchainImageView, uint32_t width, uint32_t height, uint32_t layers);
 void copyBuffer(Context * context, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 void copyBufferToImage(Context * context, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t layerCount);
-void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, TexturedModel * m);
+void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, ModelBase * m, std::vector<std::string> * textures);
 void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler);
 bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, Texture * texture);
 void createVertexBuffer(Context * context, std::vector<Vertex>& vertices, VkBuffer * vertexBuffer, VkDeviceMemory * vertexMemory, VkDeviceSize * vertexBufferSize);
 void createIndexBuffer(Context * context, std::vector<uint32_t>& indices, VkBuffer * indexBuffer, VkDeviceMemory * indexMemory, VkDeviceSize * indexBufferSize);
 void createInstanceBuffer(Context * context, std::vector<Instance>& instances, VkBuffer * instanceBuffer, VkDeviceMemory * instanceMemory, VkDeviceSize * instanceBufferSize);
+std::string findFile(std::string filename, std::string root);
 
 #endif

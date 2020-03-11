@@ -79,12 +79,18 @@ struct Material
 
 struct Texture
 {
-	VkFormat format;
-	VkImage image;
-	VkDeviceMemory memory;
-	VkImageView imageView;
+	Context * context;
 
+	VkFormat format;
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkImageView imageView = VK_NULL_HANDLE;
+
+    static uint32_t count;
     static VkSampler sampler;
+
+	Texture(std::string filename, Context * context, Renderer * renderer);
+	~Texture();
 
     static VkDescriptorSetLayoutBinding getVkDescriptorSetLayoutBinding(uint32_t binding);
 };
@@ -103,10 +109,10 @@ class ModelBase
     std::vector<Instance> instances;
 
     VkDeviceSize instanceBufferSize;
-	VkBuffer instanceBuffer;
-	VkDeviceMemory instanceMemory;
+	VkBuffer instanceBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory instanceMemory = VK_NULL_HANDLE;
 
-    VkDescriptorPool descriptorPool;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
 	ModelBase(Context * context, Renderer * renderer, Scene * scene);
 	virtual ~ModelBase() = 0;
@@ -132,7 +138,7 @@ class Model : public ModelBase
 class TexturedModel : public ModelBase
 {
     public:
-    std::vector<Texture> textures;
+    std::vector<Texture *> textures;
 
     static uint32_t count;
     static VkPipelineLayout pipelineLayout;

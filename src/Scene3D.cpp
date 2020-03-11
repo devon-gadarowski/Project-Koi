@@ -6,7 +6,6 @@
 void Scene3D::init()
 {
     app->registerSystem(&camera);
-    //this->models.push_back(new TexturedModel("ada1.obj", "assets/meshes/ada1/", context, renderer, this));
 
     setMessageCallback(SetLighting, (message_method_t) &Scene3D::updateLighting);
     setMessageCallback(GetModelData, (message_method_t) &Scene3D::getModelData);
@@ -15,7 +14,7 @@ void Scene3D::init()
 
 void Scene3D::update(long elapsedTime)
 {
-    //this->camera.updateBuffer();
+
 }
 
 void Scene3D::draw(VkCommandBuffer commandbuffer)

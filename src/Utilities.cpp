@@ -1,5 +1,6 @@
-
 #include <fstream>
+#include <filesystem>
+#include <algorithm>
 
 #include <render/Utilities.h>
 
@@ -553,7 +554,7 @@ void copyBufferToImage(Context * context, VkBuffer buffer, VkImage image, uint32
 	endSingleTimeCommands(context->device, context->primaryTransferQueue->queue, context->primaryTransferQueue->commandPool, commandBuffer);
 }
 
-void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, TexturedModel * m)
+void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, ModelBase * m, std::vector<std::string> * textures)
 {
 	std::string err, warn;
 
@@ -617,9 +618,9 @@ void loadOBJ(std::string filename, std::string location, Context * context, Rend
 	for (auto& material : materials)
 	{
 		Material mat;
-		Texture tex;
 
-		loadMeshTexture(location + material.diffuse_texname, context, renderer, &tex);
+		if (textures != nullptr && material.diffuse_texname != "")
+			textures->push_back(material.diffuse_texname);
 
 		mat.data.ambient = {material.ambient[0], material.ambient[1], material.ambient[2]};
 		mat.data.diffuse = {material.diffuse[0], material.diffuse[1], material.diffuse[2]};
@@ -629,8 +630,9 @@ void loadOBJ(std::string filename, std::string location, Context * context, Rend
 		mat.data.opacity = material.dissolve;
 
 		m->materials.push_back(mat);
-		m->textures.push_back(tex);
 	}
+
+	std::sort(m->shapes.begin(), m->shapes.end(), [m](Shape shape1, Shape shape2)->bool { return m->materials[shape1.materialID].data.opacity > m->materials[shape2.materialID].data.opacity; });
 
 	VALIDATE(err.length() == 0, "%s", err.c_str());
 
@@ -709,8 +711,7 @@ int getFileExtension(const char * filename)
 
 bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, Texture * texture)
 {
-	if (texture == nullptr || name == "")
-		return false;
+	VALIDATE(texture != nullptr && name != "", "Failed to load texture \"%s\"", name.c_str());
 
 	unsigned char * pixels = nullptr;
 	dds_info imageInfo;
@@ -728,8 +729,6 @@ bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, T
 		width = imageInfo.image.width;
 		height = imageInfo.image.height;
 		imageSize = imageInfo.image.size;
-
-		DEBUG("%d %d %d %d", width, height, imageInfo.image.size, imageInfo.image.format);
 
 		pixels = (unsigned char *) malloc(imageSize);
 
@@ -1017,4 +1016,17 @@ VkFramebuffer createVkFramebuffer(VkDevice device, const void * pNext, VkFramebu
 	VALIDATE(result == VK_SUCCESS, "RENDER_FRAMEWORK _ Failed to create framebuffer %d", result);
 
 	return framebuffer;
+}
+
+std::string findFile(std::string filename, std::string root)
+{
+	std::filesystem::path path = std::filesystem::current_path().string() + "/" + root;
+
+	for (auto iterator = std::filesystem::recursive_directory_iterator(path); iterator != std::filesystem::recursive_directory_iterator(); iterator++)
+	{
+		if (iterator->path().filename().string() == filename)
+			return iterator->path().parent_path().string() + "/";
+	}
+
+	return "";
 }

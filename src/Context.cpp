@@ -74,6 +74,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL Context::debugCallback(VkDebugUtilsMessageSeverit
     {
         PANIC("VALIDATION - %s", pCallbackData->pMessage);
     }
+
+    return VK_TRUE;
 }
 
 VkInstance createVkInstance(const std::vector<const char *> & layers, const std::vector<const char *> & extensions)

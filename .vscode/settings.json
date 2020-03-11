@@ -55,7 +55,9 @@
         "thread": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "filesystem": "cpp",
+        "codecvt": "cpp"
     },
     "cmake.configureOnOpen": false
 }

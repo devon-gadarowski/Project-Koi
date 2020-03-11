@@ -48,8 +48,8 @@ void FPSMeter::draw()
 
 	ImGui::SetNextWindowBgAlpha(0.35f);
 	ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration |ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+	ImGui::SetWindowFontScale(1.5f);
     ImGui::Text("FPS: %u", FPS);
-
     ImGui::End();
 }
 
@@ -80,6 +80,7 @@ void Console::update(long elapsedTime)
 void Console::draw()
 {
 	ImGui::Begin("Console");
+	ImGui::SetWindowFontScale(1.5f);
 	const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
 	ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -88,6 +89,7 @@ void Console::draw()
 
 	ImGui::EndChild();
 	ImGui::Separator();
+	ImGui::SetItemDefaultFocus();
 	const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory;
     if (ImGui::InputText("", buffer, 128, flags, [](ImGuiInputTextCallbackData * data)->int { return ((Console *) data->UserData)->onConsoleUpdate(data); }, (void *) this))
 	{
@@ -195,10 +197,14 @@ void Console::exit(std::vector<std::string> args)
 
 void Console::addModel(std::vector<std::string> args)
 {
-    if (args.size() != 3)
-        return;
+    if (args.size() >= 3)
+		app->sendMessageNow(AddModel, &args);
 
-    app->sendMessageNow(AddModel, &args);
+	if (args.size() == 2)
+	{
+		args.push_back(findFile(args[1], "assets/meshes/"));
+		app->sendMessageNow(AddModel, &args);
+	}
 }
 
 LightingTweaker::LightingTweaker()
@@ -224,6 +230,7 @@ void LightingTweaker::update(long elapsedTime)
 void LightingTweaker::draw()
 {
 	ImGui::Begin("Lighting Tweaker");
+	ImGui::SetWindowFontScale(1.5f);
 
     ImGui::InputFloat3("Direction", (float*)&data.direction);
     ImGui::ColorEdit4("Ambient", (float*)&data.ambient);
@@ -258,6 +265,7 @@ void ModelViewer::update(long elapsedTime)
 void ModelViewer::draw()
 {
 	ImGui::Begin("Model Viewer");
+	ImGui::SetWindowFontScale(1.5f);
 
     for (auto & model : this->models)
     {

@@ -3,6 +3,7 @@
 #include <render/Utilities.h>
 #include <render/Model.h>
 
+uint32_t Texture::count;
 VkSampler Texture::sampler;
 
 uint32_t Model::count;
@@ -128,7 +129,11 @@ Model::Model(std::string filename, std::string location, Context * context, Rend
 {
     // ===== Load Model Data =====
 
+	this->name = filename;
 
+	loadOBJ(filename, location, context, renderer, this, nullptr);
+
+	this->instances.resize(1);
 
     // ===== Create VkDescriptorPool =====
 
@@ -357,18 +362,41 @@ void Model::createVkPipeline()
 	vkDestroyShaderModule(context->device, fragmentShader, nullptr);
 }
 
+Texture::Texture(std::string filename, Context * context, Renderer * renderer)
+{
+	this->context = context;
+
+	loadMeshTexture(filename, context, renderer, this);
+
+	if (Texture::count == 0)
+		createMeshTextureSampler(context->device, &Texture::sampler);
+
+	Texture::count++;
+}
+
+Texture::~Texture()
+{
+	vkDestroyImage(context->device, image, nullptr);
+	vkDestroyImageView(context->device, imageView, nullptr);
+	vkFreeMemory(context->device, memory, nullptr);
+
+	Texture::count--;
+	if (Texture::count == 0)
+		vkDestroySampler(context->device, Texture::sampler, nullptr);
+}
+
 TexturedModel::TexturedModel(std::string filename, std::string location, Context * context, Renderer * renderer, Scene * scene) : ModelBase(context, renderer, scene)
 {
-	if (TexturedModel::count == 0)
-	{
-		createMeshTextureSampler(context->device, &Texture::sampler);
-	}
-
     // ===== Load Model Data =====
 
 	this->name = filename;
+	
+	std::vector<std::string> texturenames;
 
-	loadOBJ(filename, location, context, renderer, this);
+	loadOBJ(filename, location, context, renderer, this, &texturenames);
+
+	for (auto & texturename : texturenames)
+		this->textures.push_back(new Texture(location + texturename, context, renderer));
 
 	this->instances.resize(1);
 
@@ -421,11 +449,11 @@ TexturedModel::TexturedModel(std::string filename, std::string location, Context
     for (auto& shape : shapes)
     {
         Material & m = materials[shape.materialID];
-        Texture & t = textures[shape.materialID];
+        Texture * t = textures[shape.materialID];
 
 	    std::vector<VkDescriptorSetLayoutBinding> bindings(2);
         bindings[0] = m.getVkDescriptorSetLayoutBinding(0);
-        bindings[1] = t.getVkDescriptorSetLayoutBinding(1);
+        bindings[1] = t->getVkDescriptorSetLayoutBinding(1);
 
         VkDescriptorSetLayoutCreateInfo layoutInfo = {};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -454,7 +482,7 @@ TexturedModel::TexturedModel(std::string filename, std::string location, Context
 
         VkDescriptorImageInfo imageInfo = {};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = t.imageView;
+        imageInfo.imageView = t->imageView;
         imageInfo.sampler = Texture::sampler;
 
 
@@ -497,7 +525,7 @@ TexturedModel::TexturedModel(std::string filename, std::string location, Context
         this->createVkPipeline();
 	}
 
-    TexturedModel::count++;
+	TexturedModel::count++;
 }
 
 TexturedModel::~TexturedModel()
@@ -505,17 +533,12 @@ TexturedModel::~TexturedModel()
     TexturedModel::count--;
 
 	for (auto & texture : textures)
-	{
-		vkDestroyImage(context->device, texture.image, nullptr);
-		vkDestroyImageView(context->device, texture.imageView, nullptr);
-		vkFreeMemory(context->device, texture.memory, nullptr);
-	}
+		delete texture;
 
     if (TexturedModel::count == 0)
     {
         vkDestroyPipelineLayout(context->device, TexturedModel::pipelineLayout, nullptr);
         vkDestroyPipeline(context->device, TexturedModel::pipeline, nullptr);
-		vkDestroySampler(context->device, Texture::sampler, nullptr);
     }
 }
 

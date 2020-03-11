@@ -428,8 +428,8 @@ DDSRESULT dds_load_info( dds_info* out, size_t size, DDS_HEADER* hdr, DDS_HEADER
 	out->side = 0;
 	out->mip = 0;
 	
-	printf( "loaded dds: w=%d h=%d d=%d fmt=%d mips=%d cube=%s size=%d\n", (int) out->image.width, (int) out->image.height,
-		(int) out->image.depth, (int) out->image.format, (int) out->mipcount, out->flags & DDS_CUBEMAP ? "true" : "false", (int) out->image.size );
+	//printf( "loaded dds: w=%d h=%d d=%d fmt=%d mips=%d cube=%s size=%d\n", (int) out->image.width, (int) out->image.height,
+	//	(int) out->image.depth, (int) out->image.format, (int) out->mipcount, out->flags & DDS_CUBEMAP ? "true" : "false", (int) out->image.size );
 	
 	return DDS_SUCCESS;
 }

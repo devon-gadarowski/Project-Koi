@@ -1,8 +1,7 @@
 #include <ProjectKoi.h>
 
-// TODO: Solidify System constructor/initializer relationship
-//       Add Immediate Mode GUI elements
-//       Optimize Event System to improve tick rate
+// TODO:
+//       Fix texture & model duplication
 //       Move Keybinds to Input System? Map (key -> function -> immediate message)
 //       Implement OVR Context & OVR Renderer 
 

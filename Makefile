@@ -5,7 +5,7 @@ BIN = bin
 SRC = src
 INCLUDE = include
 
-LIBRARIES = -L$(VULKAN_SDK)/lib  -lvulkan `pkg-config --static --libs glfw3`
+LIBRARIES = -L$(VULKAN_SDK)/lib  -lvulkan `pkg-config --static --libs glfw3` -lstdc++fs
 EXECUTABLE = ProjectKoi
 
 3RD_PARTY = 3rd_party
