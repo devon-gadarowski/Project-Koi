@@ -1,0 +1,40 @@
+apply plugin: 'com.android.application'
+
+android {
+	compileSdkVersion 26
+	defaultConfig {
+		applicationId "com.dmg.projectkoi"
+		minSdkVersion 23
+		targetSdkVersion 25
+		versionCode 1
+		versionName "1.0"
+
+		sourceSets {
+			main {
+				jniLibs.srcDirs = ["$System.env.ANDROID_NDK/sources/third_party/vulkan/src/build-android/jniLibs", "$System.env.OCULUS_MOBILE_SDK/$System.env.OCULUS_MOBILE_SDK_VERSION/VrApi/Libs/Android/Debug"]
+			}
+		}
+
+		ndk {
+			abiFilters "arm64-v8a"
+		}
+
+		externalNativeBuild {
+			cmake {
+				cppFlags "-g", "-std=c++17", "-DANDROID=1"
+				arguments "-DANDROID_STL=c++_shared"
+			}
+		}
+	}
+
+	externalNativeBuild {
+		cmake {
+			version'3.10.2'
+			path file('src/main/CMakeLists.txt')
+		}
+	}
+}
+
+dependencies {
+	implementation 'com.android.support:appcompat-v7:26.1.0'
+}

@@ -1,8 +1,20 @@
-
 # Ignore Model Data
 /assets/meshes/
 
 # Ignore Build
 /bin/
+/quest/build/
+/quest/app/build/
+/quest/app/.externalNativeBuild/
 
+# Ingore GUI style sheets
 imgui.ini
+
+# Ignore Gradle
+gradle-wrapper.jar
+/quest/.gradle
+/quest/captures/
+/quest/gradlew
+/quest/gradlew.bat
+/quest/local.properties
+/quest/GeneratedPluginRegistrant.java

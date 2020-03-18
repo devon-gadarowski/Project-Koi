@@ -554,238 +554,6 @@ void copyBufferToImage(Context * context, VkBuffer buffer, VkImage image, uint32
 	endSingleTimeCommands(context->device, context->primaryTransferQueue->queue, context->primaryTransferQueue->commandPool, commandBuffer);
 }
 
-void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, ModelBase * m, std::vector<std::string> * textures)
-{
-	std::string err, warn;
-
-	tinyobj::attrib_t attrib;
-	std::vector<tinyobj::shape_t> shapes;
-	std::vector<tinyobj::material_t> materials;
-
-	tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, (location + filename).c_str(), location.c_str(), true, true);
-
-	for (auto& shape : shapes)
-	{
-		Shape mesh = {};
-		size_t index_offset = 0;
-		std::unordered_map<Vertex, uint32_t> uniqueVertices;
-		for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++)
-		{
-			int fv = shape.mesh.num_face_vertices[f];
-			for (size_t v = 0; v < fv; v++)
-			{
-				tinyobj::index_t index = shape.mesh.indices[index_offset + v];
-
-				Vertex vertex = {};
-
-				vertex.data.position = {
-					attrib.vertices[3 * index.vertex_index + 0],
-					attrib.vertices[3 * index.vertex_index + 1],
-					attrib.vertices[3 * index.vertex_index + 2]
-				};
-
-				vertex.data.color = {
-					attrib.colors[3 * index.normal_index + 0],
-					attrib.colors[3 * index.normal_index + 1],
-					attrib.colors[3 * index.normal_index + 2]
-				};
-
-				vertex.data.normal = {
-					attrib.normals[3 * index.normal_index + 0],
-					attrib.normals[3 * index.normal_index + 1],
-					attrib.normals[3 * index.normal_index + 2]
-				};
-
-				vertex.data.tex = {
-					attrib.texcoords[2 * index.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-				};
-
-				if (uniqueVertices.count(vertex) == 0)
-				{
-					uniqueVertices[vertex] = static_cast<uint32_t>(mesh.vertices.size());
-					mesh.vertices.push_back(vertex);
-				}
-
-				mesh.indices.push_back(uniqueVertices[vertex]);
-			}
-			mesh.materialID = shape.mesh.material_ids[f];
-			index_offset += fv;
-		}
-		m->shapes.push_back(mesh);
-	}
-
-	for (auto& material : materials)
-	{
-		Material mat;
-
-		if (textures != nullptr && material.diffuse_texname != "")
-			textures->push_back(material.diffuse_texname);
-
-		mat.data.ambient = {material.ambient[0], material.ambient[1], material.ambient[2]};
-		mat.data.diffuse = {material.diffuse[0], material.diffuse[1], material.diffuse[2]};
-		mat.data.specular = {material.specular[0], material.specular[1], material.specular[2]};
-		mat.data.emission = {material.emission[0], material.emission[1], material.emission[2]};
-		mat.data.shininess = material.shininess;
-		mat.data.opacity = material.dissolve;
-
-		m->materials.push_back(mat);
-	}
-
-	std::sort(m->shapes.begin(), m->shapes.end(), [m](Shape shape1, Shape shape2)->bool { return m->materials[shape1.materialID].data.opacity > m->materials[shape2.materialID].data.opacity; });
-
-	VALIDATE(err.length() == 0, "%s", err.c_str());
-
-	if (warn.length() > 1)
-	{
-		WARN("%s", warn.c_str());
-	}
-}
-
-void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler)
-{
-	VkSamplerCreateInfo samplerInfo = {};
-	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.pNext = nullptr;
-	samplerInfo.flags = 0;
-	samplerInfo.magFilter = VK_FILTER_LINEAR;
-	samplerInfo.minFilter = VK_FILTER_LINEAR;
-	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.mipLodBias = 0.0f;
-	samplerInfo.anisotropyEnable = VK_TRUE;
-	samplerInfo.maxAnisotropy = 16;
-	samplerInfo.compareEnable = VK_FALSE;
-	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-	samplerInfo.minLod = 0.0f;
-	samplerInfo.maxLod = 0.0f;
-	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	samplerInfo.unnormalizedCoordinates = VK_FALSE;
-
-	int result = vkCreateSampler(device, &samplerInfo, nullptr, textureSampler);
-	if (result != VK_SUCCESS)
-	{
-		PANIC("RENDER_FRAMEWORK - Failed to create texture sampler %d", result);
-	}
-}
-
-int getFileExtension(const char * filename)
-{
-	int i, j;
-
-	char extension[10]; 
-
-	enum extensions {
-		dds = 0,
-		png,
-		jpg,
-		bmp,
-		other
-	};
-
-	for (i = 0; filename[i] != '\0'; i++);
-
-	for ( ; filename[i-1] != '.'; i--);
-
-	for (j = 0; filename[i] != '\0'; i++, j++)
-		extension[j] = filename[i];
-
-	extension[j] = '\0';
-
-	if (strcmp(extension, "dds") == 0)
-		return dds;
-
-	if (strcmp(extension, "png") == 0)
-		return png;
-
-	if (strcmp(extension, "jpg") == 0)
-		return jpg;
-
-	if (strcmp(extension, "bmp") == 0)
-		return bmp;
-
-	return other;
-}
-
-bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, Texture * texture)
-{
-	VALIDATE(texture != nullptr && name != "", "Failed to load texture \"%s\"", name.c_str());
-
-	unsigned char * pixels = nullptr;
-	dds_info imageInfo;
-	int width, height, channels;
-	VkDeviceSize imageSize;
-	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
-
-	if (getFileExtension(name.c_str()) == 0)
-	{
-		static const dds_u32 supfmt[] = { DDS_FMT_R8G8B8A8, DDS_FMT_B8G8R8A8, DDS_FMT_B8G8R8X8, DDS_FMT_DXT1, DDS_FMT_DXT3, DDS_FMT_DXT5, 0 };
-		int result = dds_load_from_file(name.c_str(), &imageInfo, supfmt);
-
-		VALIDATE(result == DDS_SUCCESS, "RENDER_FRAMEWORK - Failed to load texture %s %d", name.c_str(), result);
-
-		width = imageInfo.image.width;
-		height = imageInfo.image.height;
-		imageSize = imageInfo.image.size;
-
-		pixels = (unsigned char *) malloc(imageSize);
-
-		if (imageInfo.image.format == DDS_FMT_DXT5)
-			format = VK_FORMAT_BC3_UNORM_BLOCK;
-		if (imageInfo.image.format == DDS_FMT_B8G8R8A8)
-			format = VK_FORMAT_B8G8R8A8_UNORM;
-
-		dds_read(&imageInfo, pixels);
-
-		dds_close(&imageInfo);
-	}
-	else
-	{
-		pixels = stbi_load(name.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-		imageSize = width * height * 4;
-	}
-
-	VALIDATE(pixels, "RENDER_FRAMEWORK - Failed to load texture %s", name.c_str());
-
-	VkBuffer stagingBuffer;
-	VkDeviceMemory stagingBufferMemory;
-	createBuffer(context, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-	             &stagingBuffer, &stagingBufferMemory);
-
-	void * data;
-	vkMapMemory(context->device, stagingBufferMemory, 0, imageSize, 0, &data);
-	memcpy(((unsigned char *) data), pixels, imageSize);
-	vkUnmapMemory(context->device, stagingBufferMemory);
-
-	free(pixels);
-
-	VkExtent2D e = {};
-	e.width = width;
-	e.height = height;
-
-	createVkImage(context, VK_IMAGE_TYPE_2D, format, e, 1, 1, VK_SAMPLE_COUNT_1_BIT,
-	            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-	            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &texture->image, &texture->memory);
-
-	transitionImageLayout(context->device, context->primaryGraphicsQueue->queue, context->primaryGraphicsQueue->commandPool, texture->image, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
-
-	copyBufferToImage(context, stagingBuffer, texture->image, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1);
-
-	transitionImageLayout(context->device, context->primaryGraphicsQueue->queue, context->primaryGraphicsQueue->commandPool, texture->image, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
-
-	createVkImageView(context, texture->image, format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, &texture->imageView);
-
-	vkDestroyBuffer(context->device, stagingBuffer, nullptr);
-	vkFreeMemory(context->device, stagingBufferMemory, nullptr);
-
-	texture->format = format;
-
-	return true;
-}
-
 void createVertexBuffer(Context * context, std::vector<Vertex>& vertices, VkBuffer * vertexBuffer,
                         VkDeviceMemory * vertexMemory, VkDeviceSize * vertexBufferSize)
 {
@@ -862,29 +630,6 @@ void createInstanceBuffer(Context * context, std::vector<Instance>& instances, V
 
 	vkDestroyBuffer(context->device, stagingBuffer, nullptr);
 	vkFreeMemory(context->device, stagingBufferMemory, nullptr);
-}
-
-VkShaderModule loadShader(Context * context, std::string filename)
-{
-	VkShaderModule shaderModule;
-
-	std::ifstream file(filename, std::ios::binary | std::ios::ate);
-	std::streamsize size = file.tellg();
-	file.seekg(0, std::ios::beg);
-
-	std::vector<char> buffer(size);
-	VALIDATE(file.read(buffer.data(), size), "RENDER_FRAMEWORK - Failed to read shader file %s", filename.c_str());
-
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = size;
-	createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-	int result = vkCreateShaderModule(context->device, &createInfo, nullptr, &shaderModule); 
-	VALIDATE(result == VK_SUCCESS, "RENDER_FRAMEWORK - Failed to create shader module %d", result);
-
-	DEBUG("RENDER_FRAMEWORK - VkShaderModule Created %s", filename.c_str());
-
-	return shaderModule;
 }
 
 VkRenderPass createVkRenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits sampleCount)
@@ -1018,6 +763,263 @@ VkFramebuffer createVkFramebuffer(VkDevice device, const void * pNext, VkFramebu
 	return framebuffer;
 }
 
+void createMeshTextureSampler(VkDevice device, VkSampler * textureSampler)
+{
+	VkSamplerCreateInfo samplerInfo = {};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.pNext = nullptr;
+	samplerInfo.flags = 0;
+	samplerInfo.magFilter = VK_FILTER_LINEAR;
+	samplerInfo.minFilter = VK_FILTER_LINEAR;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.mipLodBias = 0.0f;
+	samplerInfo.anisotropyEnable = VK_TRUE;
+	samplerInfo.maxAnisotropy = 16;
+	samplerInfo.compareEnable = VK_FALSE;
+	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerInfo.minLod = 0.0f;
+	samplerInfo.maxLod = 0.0f;
+	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+	int result = vkCreateSampler(device, &samplerInfo, nullptr, textureSampler);
+	if (result != VK_SUCCESS)
+	{
+		PANIC("RENDER_FRAMEWORK - Failed to create texture sampler %d", result);
+	}
+}
+
+#ifndef ANDROID
+
+void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, ModelBase * m, std::vector<std::string> * textures)
+{
+	std::string err, warn;
+
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+
+	tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, (location + filename).c_str(), location.c_str(), true, true);
+
+	for (auto& shape : shapes)
+	{
+		Shape mesh = {};
+		size_t index_offset = 0;
+		std::unordered_map<Vertex, uint32_t> uniqueVertices;
+		for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++)
+		{
+			int fv = shape.mesh.num_face_vertices[f];
+			for (size_t v = 0; v < fv; v++)
+			{
+				tinyobj::index_t index = shape.mesh.indices[index_offset + v];
+
+				Vertex vertex = {};
+
+				vertex.data.position = {
+					attrib.vertices[3 * index.vertex_index + 0],
+					attrib.vertices[3 * index.vertex_index + 1],
+					attrib.vertices[3 * index.vertex_index + 2]
+				};
+
+				vertex.data.color = {
+					attrib.colors[3 * index.normal_index + 0],
+					attrib.colors[3 * index.normal_index + 1],
+					attrib.colors[3 * index.normal_index + 2]
+				};
+
+				vertex.data.normal = {
+					attrib.normals[3 * index.normal_index + 0],
+					attrib.normals[3 * index.normal_index + 1],
+					attrib.normals[3 * index.normal_index + 2]
+				};
+
+				vertex.data.tex = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
+
+				if (uniqueVertices.count(vertex) == 0)
+				{
+					uniqueVertices[vertex] = static_cast<uint32_t>(mesh.vertices.size());
+					mesh.vertices.push_back(vertex);
+				}
+
+				mesh.indices.push_back(uniqueVertices[vertex]);
+			}
+			mesh.materialID = shape.mesh.material_ids[f];
+			index_offset += fv;
+		}
+		m->shapes.push_back(mesh);
+	}
+
+	for (auto& material : materials)
+	{
+		Material mat;
+
+		if (textures != nullptr && material.diffuse_texname != "")
+			textures->push_back(material.diffuse_texname);
+
+		mat.data.ambient = {material.ambient[0], material.ambient[1], material.ambient[2]};
+		mat.data.diffuse = {material.diffuse[0], material.diffuse[1], material.diffuse[2]};
+		mat.data.specular = {material.specular[0], material.specular[1], material.specular[2]};
+		mat.data.emission = {material.emission[0], material.emission[1], material.emission[2]};
+		mat.data.shininess = material.shininess;
+		mat.data.opacity = material.dissolve;
+
+		m->materials.push_back(mat);
+	}
+
+	std::sort(m->shapes.begin(), m->shapes.end(), [m](Shape shape1, Shape shape2)->bool { return m->materials[shape1.materialID].data.opacity > m->materials[shape2.materialID].data.opacity; });
+
+	VALIDATE(err.length() == 0, "%s", err.c_str());
+
+	if (warn.length() > 1)
+	{
+		WARN("%s", warn.c_str());
+	}
+}
+
+int getFileExtension(const char * filename)
+{
+	int i, j;
+
+	char extension[10]; 
+
+	enum extensions {
+		dds = 0,
+		png,
+		jpg,
+		bmp,
+		other
+	};
+
+	for (i = 0; filename[i] != '\0'; i++);
+
+	for ( ; filename[i-1] != '.'; i--);
+
+	for (j = 0; filename[i] != '\0'; i++, j++)
+		extension[j] = filename[i];
+
+	extension[j] = '\0';
+
+	if (strcmp(extension, "dds") == 0)
+		return dds;
+
+	if (strcmp(extension, "png") == 0)
+		return png;
+
+	if (strcmp(extension, "jpg") == 0)
+		return jpg;
+
+	if (strcmp(extension, "bmp") == 0)
+		return bmp;
+
+	return other;
+}
+
+bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, Texture * texture)
+{
+	VALIDATE(texture != nullptr && name != "", "Failed to load texture \"%s\"", name.c_str());
+
+	unsigned char * pixels = nullptr;
+	dds_info imageInfo;
+	int width, height, channels;
+	VkDeviceSize imageSize;
+	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+
+	if (getFileExtension(name.c_str()) == 0)
+	{
+		static const dds_u32 supfmt[] = { DDS_FMT_R8G8B8A8, DDS_FMT_B8G8R8A8, DDS_FMT_B8G8R8X8, DDS_FMT_DXT1, DDS_FMT_DXT3, DDS_FMT_DXT5, 0 };
+		int result = dds_load_from_file(name.c_str(), &imageInfo, supfmt);
+
+		VALIDATE(result == DDS_SUCCESS, "RENDER_FRAMEWORK - Failed to load texture %s %d", name.c_str(), result);
+
+		width = imageInfo.image.width;
+		height = imageInfo.image.height;
+		imageSize = imageInfo.image.size;
+
+		pixels = (unsigned char *) malloc(imageSize);
+
+		if (imageInfo.image.format == DDS_FMT_DXT5)
+			format = VK_FORMAT_BC3_UNORM_BLOCK;
+		if (imageInfo.image.format == DDS_FMT_B8G8R8A8)
+			format = VK_FORMAT_B8G8R8A8_UNORM;
+
+		dds_read(&imageInfo, pixels);
+
+		dds_close(&imageInfo);
+	}
+	else
+	{
+		pixels = stbi_load(name.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+		imageSize = width * height * 4;
+	}
+
+	VALIDATE(pixels, "RENDER_FRAMEWORK - Failed to load texture %s", name.c_str());
+
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+	createBuffer(context, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	             &stagingBuffer, &stagingBufferMemory);
+
+	void * data;
+	vkMapMemory(context->device, stagingBufferMemory, 0, imageSize, 0, &data);
+	memcpy(((unsigned char *) data), pixels, imageSize);
+	vkUnmapMemory(context->device, stagingBufferMemory);
+
+	free(pixels);
+
+	VkExtent2D e = {};
+	e.width = width;
+	e.height = height;
+
+	createVkImage(context, VK_IMAGE_TYPE_2D, format, e, 1, 1, VK_SAMPLE_COUNT_1_BIT,
+	            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+	            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &texture->image, &texture->memory);
+
+	transitionImageLayout(context->device, context->primaryGraphicsQueue->queue, context->primaryGraphicsQueue->commandPool, texture->image, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+
+	copyBufferToImage(context, stagingBuffer, texture->image, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1);
+
+	transitionImageLayout(context->device, context->primaryGraphicsQueue->queue, context->primaryGraphicsQueue->commandPool, texture->image, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
+
+	createVkImageView(context, texture->image, format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT, &texture->imageView);
+
+	vkDestroyBuffer(context->device, stagingBuffer, nullptr);
+	vkFreeMemory(context->device, stagingBufferMemory, nullptr);
+
+	texture->format = format;
+
+	return true;
+}
+
+VkShaderModule loadShader(Context * context, std::string filename)
+{
+	VkShaderModule shaderModule;
+
+	std::ifstream file(filename, std::ios::binary | std::ios::ate);
+	std::streamsize size = file.tellg();
+	file.seekg(0, std::ios::beg);
+
+	std::vector<char> buffer(size);
+	VALIDATE(file.read(buffer.data(), size), "RENDER_FRAMEWORK - Failed to read shader file %s", filename.c_str());
+
+	VkShaderModuleCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = size;
+	createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+	int result = vkCreateShaderModule(context->device, &createInfo, nullptr, &shaderModule); 
+	VALIDATE(result == VK_SUCCESS, "RENDER_FRAMEWORK - Failed to create shader module %d", result);
+
+	DEBUG("RENDER_FRAMEWORK - VkShaderModule Created %s", filename.c_str());
+
+	return shaderModule;
+}
+
 std::string findFile(std::string filename, std::string root)
 {
 	std::filesystem::path path = std::filesystem::current_path().string() + "/" + root;
@@ -1030,3 +1032,23 @@ std::string findFile(std::string filename, std::string root)
 
 	return "";
 }
+
+#else
+
+void loadOBJ(std::string filename, std::string location, Context * context, Renderer * renderer, ModelBase * m, std::vector<std::string> * textures)
+{
+	
+}
+
+bool loadMeshTexture(std::string name, Context * context, Renderer * renderer, Texture * texture)
+{
+	return false;
+}
+
+VkShaderModule loadShader(Context * context, std::string filename)
+{
+	return VK_NULL_HANDLE;
+}
+
+
+#endif

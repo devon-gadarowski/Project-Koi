@@ -26,6 +26,7 @@ bool supportsLayers(const std::vector<const char *> & layers)
 
         if (!found)
         {
+            WARN("Failed to find layer %s", layer);
             return false;
         }
     }
@@ -100,7 +101,7 @@ VkInstance createVkInstance(const std::vector<const char *> & layers, const std:
 
     VkInstance instance;
     int result = vkCreateInstance(&createInfo, nullptr, &instance);
-    VALIDATE(result == VK_SUCCESS, "Failed to create VkInstance");
+    VALIDATE(result == VK_SUCCESS, "Failed to create VkInstance %d", result);
 
     DEBUG("CONTEXT - VkInstance Created");
     return instance;

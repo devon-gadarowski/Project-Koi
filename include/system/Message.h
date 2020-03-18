@@ -2,6 +2,7 @@
 #define MESSAGE_H
 
 #include <memory>
+#include <string>
 
 enum MessageType
 {

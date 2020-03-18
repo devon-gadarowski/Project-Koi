@@ -1,5 +1,50 @@
 #include <render/Renderer.h>
 
+VkFormat chooseColorFormat(VkPhysicalDevice physicalDevice)
+{
+    VkFormat colorFormat;
+    std::vector<VkFormat> colorCandidates = {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM};
+
+    for (auto& colorCandidate : colorCandidates)
+    {
+        VkFormatProperties props = {};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, colorCandidate, &props);
+
+        if (props.linearTilingFeatures | props.optimalTilingFeatures |props.bufferFeatures != 0)
+        {
+            colorFormat = colorCandidate;
+            break;
+        }
+    }
+
+    VALIDATE(colorFormat != VK_FORMAT_UNDEFINED, "RENDER_FRAMEWORK - Failed to find valid color image format");
+
+    return colorFormat;
+}
+
+VkFormat chooseDepthFormat(VkPhysicalDevice physicalDevice)
+{
+    VkFormat depthFormat;
+
+    std::vector<VkFormat> depthCandidates = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+
+    for (auto& depthCandidate : depthCandidates)
+    {
+        VkFormatProperties props = {};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, depthCandidate, &props);
+
+        if (props.linearTilingFeatures | props.optimalTilingFeatures | props.bufferFeatures != 0)
+        {
+            depthFormat = depthCandidate;
+            break;
+        }
+    }
+
+    VALIDATE(depthFormat != VK_FORMAT_UNDEFINED, "RENDER_FRAMEWORK - Failed to find valid depth image format");
+
+    return depthFormat;
+}
+
 VkViewport Renderer::getDefaultVkViewport()
 {
 	VkViewport viewport = {};

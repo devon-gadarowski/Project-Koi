@@ -1,7 +1,7 @@
 #ifndef SCENE_H
 #define SCENE_H
 
-#include <vulkan/vulkan.h>
+#include <render/KoiVulkan.h>
 
 #include <system/System.h>
 #include <render/Context.h>

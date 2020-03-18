@@ -7,8 +7,6 @@
 #include <render/DesktopRenderer.h>
 #include <render/Utilities.h>
 
-VkFormat chooseColorFormat(VkPhysicalDevice physicalDevice);
-VkFormat chooseDepthFormat(VkPhysicalDevice physicalDevice);
 void getVkSurfacePresentModes(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, std::vector<VkPresentModeKHR> & presentModes);
 void getVkSurfaceFormats(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, std::vector<VkSurfaceFormatKHR> & surfaceFormats);
 uint32_t chooseLength(VkSurfaceCapabilitiesKHR & capabilities);
@@ -98,8 +96,6 @@ void DesktopRenderer::render(VkCommandBuffer commandbuffer)
 	submitInfo.pCommandBuffers = &commandbuffer;
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &renderFinished;
-
-    //VALIDATE(false, "Force break");
 
 	VkResult result = vkQueueSubmit(context->primaryGraphicsQueue->queue, 1, &submitInfo, fences[currentImageIndex]);
 	VALIDATE(result == VK_SUCCESS, "RENDERER - Failed to submit draw command buffer %d", result);
@@ -262,51 +258,6 @@ DesktopRenderer::~DesktopRenderer()
     vkDestroySwapchainKHR(context->device, swapchain, nullptr);
 
     DEBUG("RENDERER - Renderer Destroyed");
-}
-
-VkFormat chooseColorFormat(VkPhysicalDevice physicalDevice)
-{
-    VkFormat colorFormat;
-    std::vector<VkFormat> colorCandidates = {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM};
-
-    for (auto& colorCandidate : colorCandidates)
-    {
-        VkFormatProperties props = {};
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, colorCandidate, &props);
-
-        if (props.linearTilingFeatures | props.optimalTilingFeatures |props.bufferFeatures != 0)
-        {
-            colorFormat = colorCandidate;
-            break;
-        }
-    }
-
-    VALIDATE(colorFormat != VK_FORMAT_UNDEFINED, "RENDER_FRAMEWORK - Failed to find valid color image format");
-
-    return colorFormat;
-}
-
-VkFormat chooseDepthFormat(VkPhysicalDevice physicalDevice)
-{
-    VkFormat depthFormat;
-
-    std::vector<VkFormat> depthCandidates = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
-
-    for (auto& depthCandidate : depthCandidates)
-    {
-        VkFormatProperties props = {};
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, depthCandidate, &props);
-
-        if (props.linearTilingFeatures | props.optimalTilingFeatures | props.bufferFeatures != 0)
-        {
-            depthFormat = depthCandidate;
-            break;
-        }
-    }
-
-    VALIDATE(depthFormat != VK_FORMAT_UNDEFINED, "RENDER_FRAMEWORK - Failed to find valid depth image format");
-
-    return depthFormat;
 }
 
 void getVkSurfacePresentModes(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, std::vector<VkPresentModeKHR> & presentModes)

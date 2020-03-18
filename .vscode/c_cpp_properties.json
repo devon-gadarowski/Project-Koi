@@ -7,7 +7,11 @@
                 "${workspaceFolder}/3rd_party",
                 "${VULKAN_SDK}/include",
                 "${OPENVR_SDK}/headers",
-                "${OCULUS_MOBILE_SDK}/Include"
+                "${OCULUS_MOBILE_SDK}/${OCULUS_MOBILE_SDK_VERSION}/VrApi/Include",
+                "${ANDROID_NDK}/sysroot/usr/include",
+                "${ANDROID_NDK}/sources/android/native_app_glue",
+                "${ANDROID_NDK}/sources/third_party/vulkan/src/common"
+
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

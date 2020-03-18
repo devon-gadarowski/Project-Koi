@@ -12,8 +12,7 @@ ProjectKoi::ProjectKoi()
 
 ProjectKoi::~ProjectKoi()
 {
-    delete renderSystem;
-    delete inputSystem;
+
 }
 
 void ProjectKoi::init()
@@ -25,12 +24,6 @@ void ProjectKoi::init()
     lastUpdateTime = value.count();
 
     setMessageCallback(Exit, (message_method_t) &ProjectKoi::exit);
-
-    inputSystem = new InputSystem();
-    this->registerSystem(inputSystem);
-
-    renderSystem = new RenderSystem();
-    this->registerSystem(renderSystem);
 }
 
 void ProjectKoi::run()
@@ -68,12 +61,44 @@ void ProjectKoi::exit(Message * msg)
     this->needsDestroying = true;
 }
 
+#ifndef ANDROID
+
 int main()
 {
     ProjectKoi app;
 
     app.init();
+
+    app.inputSystem = new InputSystem();
+    app.registerSystem(app.inputSystem);
+
+    app.renderSystem = new RenderSystem();
+    app.registerSystem(app.renderSystem);
+
     app.run();
+
+    delete app.renderSystem;
+    delete app.inputSystem;
 
     return 0;
 }
+
+#else
+
+#include <android_native_app_glue.h>
+
+void android_main(android_app * android_context)
+{
+    ProjectKoi app;
+
+    app.init();
+
+    app.renderSystem = new RenderSystem(android_context);
+    app.registerSystem(app.renderSystem);
+
+    app.run();
+
+    delete app.renderSystem;
+}
+
+#endif

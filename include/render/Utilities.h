@@ -1,7 +1,7 @@
 #ifndef UTILITIES_H
 #define UTILITIES_H
 
-#include <vulkan/vulkan.h>
+#include <render/KoiVulkan.h>
 
 #include <system/Log.h>
 #include <render/Context.h>

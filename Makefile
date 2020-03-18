@@ -14,6 +14,8 @@ VULKAN_INCLUDE = $(VULKAN_SDK)/include
 
 SHADERS = assets/shaders
 
+EXCLUDE = $(SRC)/OVRContext.cpp $(SRC)/OVRRenderer.cpp
+
 all: clean $(BIN)/$(EXECUTABLE) build_shaders
 
 run: all
@@ -21,7 +23,7 @@ run: all
 	./$(BIN)/$(EXECUTABLE)
 
 $(BIN)/$(EXECUTABLE): $(SRC)/*.cpp $(3RD_PARTY)/dds/*.c $(3RD_PARTY)/imgui/*.cpp
-	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -I$(3RD_PARTY) -I$(VULKAN_INCLUDE) $^ -o $@ $(LIBRARIES)
+	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -I$(3RD_PARTY) -I$(VULKAN_INCLUDE) $(filter-out $(EXCLUDE),$^) -o $@ $(LIBRARIES)
 
 clean:
 	rm -f $(BIN)/$(EXECUTABLE)

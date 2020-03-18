@@ -4,6 +4,9 @@
 #include <system/System.h>
 #include <render/Context.h>
 
+VkFormat chooseColorFormat(VkPhysicalDevice physicalDevice);
+VkFormat chooseDepthFormat(VkPhysicalDevice physicalDevice);
+
 class Renderer : public System
 {
     public:
@@ -12,7 +15,7 @@ class Renderer : public System
     Context * context;
 
     uint32_t currentImageIndex = 0;
-    uint32_t frameCount = 0;
+    unsigned long long frameCount = 0;
 
     uint32_t length;
     VkExtent2D extent;

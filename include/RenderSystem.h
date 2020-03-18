@@ -5,10 +5,20 @@
 #include <system/Log.h>
 #include <system/System.h>
 
+#ifndef ANDROID
+
 #include <render/DesktopContext.h>
 #include <render/DesktopRenderer.h>
-#include <render/Scene3D.h>
 #include <render/GUI.h>
+
+#else
+
+#include <render/OVRContext.h>
+#include <render/OVRRenderer.h>
+
+#endif
+
+#include <render/Scene3D.h>
 
 class RenderSystem : public System
 {
@@ -21,11 +31,20 @@ class RenderSystem : public System
 		RenderSystem() {}
 		~RenderSystem();
 
+#ifdef ANDROID
+		RenderSystem(android_app * android_context) { this->android_context = android_context; }
+#endif
+
 	private:
-		DesktopContext * context;
-		DesktopRenderer * renderer;
-		Scene * scene;
-		GUI * gui;
+		Context * context = nullptr;
+		Renderer * renderer = nullptr;
+		Scene * scene = nullptr;
+
+#ifndef ANDROID
+		GUI * gui = nullptr;
+#else
+    	android_app * android_context;
+#endif
 
 		bool paused = true;
 

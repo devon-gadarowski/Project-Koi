@@ -7,7 +7,16 @@
 #include <system/System.h>
 
 #include <RenderSystem.h>
+
+#ifndef ANDROID
+
 #include <InputSystem.h>
+
+#else
+
+#include <vulkan_wrapper.h>
+
+#endif
 
 class ProjectKoi : public System, public MessageBus
 {
@@ -19,7 +28,10 @@ class ProjectKoi : public System, public MessageBus
     ~ProjectKoi();
 
     RenderSystem * renderSystem;
+
+#ifndef ANDROID
     InputSystem * inputSystem;
+#endif
 
     void init();
     void update(long elapsedTime);
